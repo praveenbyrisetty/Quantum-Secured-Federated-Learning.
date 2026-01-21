@@ -1,0 +1,123 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.coverage
+coverage.xml
+*.egg-info/
+dist/
+build/
+*.egg
+*.manifest
+*.spec
+
+# PyTorch & ML specific
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.torchscript
+*.onnx.*
+lightning_logs/
+wandb/
+tensorboard/
+runs/
+*.onnx
+*.pb
+*.tflite
+*.mlmodel
+*.coremlmodel
+*.saved_model/
+*.h5
+*.keras
+
+# Datasets & large data
+data/
+dataset/
+datasets/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+MNIST/
+CIFAR10/
+CIFAR-100/
+flowers/
+imagenet/
+*.csv   # ← only if your datasets are huge CSVs; otherwise you can remove this line
+*.npz
+*.npy   # ← comment out if you want to version small numpy arrays
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints/
+*.ipynb
+
+# Logs and temporary files
+*.log
+*.logs/
+log/
+logs/
+*.tmp
+*.bak
+*.swp
+*~
+
+# IDE / Editor
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+*.atom/
+*.vs/
+*.swp
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# macOS
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+__MACOSX
+
+# Windows
+$RECYCLE.BIN/
+System Volume Information/
+ehthumbs_vista.db
+
+# Dependency directories (if you have them)
+node_modules/
+bower_components/
+
+# Qiskit / quantum simulation artifacts (sometimes large)
+*.qasm
+*.circuit
+qiskit_cache/
+*.qobj
+
+# Performance / profiling
+*.prof
+*.prof.data
+*.lprof
+
+# Keep these (uncomment if you want to ignore them)
+# requirements.txt
+# README.md
+# LICENSE
