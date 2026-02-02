@@ -1,37 +1,37 @@
+"""
+Client 2: Security (Text)
+"""
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from model import UniversalModel
-from data_setup import get_hetero_dataloaders
+from multi_modal_model import MultiModalFederatedModel
 from quantum_e91 import encrypt_data
+from data_setup import TextDataset, get_dynamic_loader
+from utils import setup_logger
 
-def run_client_2(global_weights, local_epochs=2, device='cpu'):
-    print("\n   [Client 2 - Wildlife Dept] 🐅 Starting Operation...")
+logger = setup_logger("Client2")
+
+def run_client_2(global_weights, round_num, device, data_path=None):
+    logger.info(f"📝 [Client 2] Training on Text Logs...")
     
-    (_, train_l2, _), _ = get_hetero_dataloaders()
+    # Load Data (Text)
+    dataset = TextDataset(path=data_path if data_path else './data/test.txt')
+    loader = get_dynamic_loader(dataset, round_num)
     
-    model = UniversalModel().to(device)  # Move to GPU/CPU
-    model.load_state_dict(global_weights)
+    # Model (Text LSTM)
+    model = MultiModalFederatedModel('text').to(device)
+    try: model.load_state_dict(global_weights, strict=True)
+    except: pass
     model.train()
     
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    criterion = torch.nn.CrossEntropyLoss()
     
-    print("   [Client 2] Training on local data...")
-    for epoch in range(local_epochs):
-        for images, labels in train_l2:
-            images = images.to(device)  # Move to GPU/CPU
-            labels = labels.to(device)  # Move to GPU/CPU
+    for _ in range(1):
+        for txt, lbl in loader:
+            txt, lbl = txt.to(device), lbl.to(device)
             optimizer.zero_grad()
-            output = model(images)
-            loss = criterion(output, labels)
+            loss = criterion(model(txt), lbl)
             loss.backward()
             optimizer.step()
-        
-    print("   [Client 2] Training Complete.")
-    
-    final_weights = model.state_dict()
-    encrypted_weights, key = encrypt_data(final_weights)
-    print(f"   [Client 2] 🔐 Encrypted with E91 Key: {key[:8]}...")
-    
-    return encrypted_weights, key
+            
+    return encrypt_data(model.state_dict())

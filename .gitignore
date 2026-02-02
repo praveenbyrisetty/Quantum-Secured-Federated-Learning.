@@ -117,6 +117,19 @@ qiskit_cache/
 *.prof.data
 *.lprof
 
+# Configuration overrides (keep default config.yaml in repo)
+config.local.yaml
+config.override.yaml
+*.local.yaml
+
+# Test coverage
+htmlcov/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
 # Keep these (uncomment if you want to ignore them)
 # requirements.txt
 # README.md

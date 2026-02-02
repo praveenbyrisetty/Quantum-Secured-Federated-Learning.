@@ -1,39 +1,37 @@
+"""
+Client 1: Traffic (Images)
+"""
 import torch
-import torch.nn as nn
 import torch.optim as optim
-from model import UniversalModel
-from data_setup import get_hetero_dataloaders
+from multi_modal_model import MultiModalFederatedModel
 from quantum_e91 import encrypt_data
+from data_setup import get_image_dataset, get_dynamic_loader
+from utils import setup_logger
 
-def run_client_1(global_weights, local_epochs=3, device=None):
-    if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logger = setup_logger("Client1")
 
-    print(f"\n   [Client 1 - Traffic Dept] 🚗 Starting on {device}...")
+def run_client_1(global_weights, round_num, device, data_path=None):
+    logger.info(f"� [Client 1] Training on Images...")
     
-    (train_l1, _, _), _ = get_hetero_dataloaders()
-    model = UniversalModel().to(device)                 # ← GPU
-    model.load_state_dict(global_weights)
+    # Load Data (Images)
+    dataset = get_image_dataset(path=data_path if data_path else './data/images')
+    loader = get_dynamic_loader(dataset, round_num)
+    
+    # Model (Image CNN)
+    model = MultiModalFederatedModel('image').to(device)
+    try: model.load_state_dict(global_weights, strict=True)
+    except: pass # Skip if mismatched (e.g. first round)
     model.train()
     
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr=0.01)
+    criterion = torch.nn.CrossEntropyLoss()
     
-    print("   [Client 1] Training...")
-    for epoch in range(local_epochs):
-        for images, labels in train_l1:
-            images = images.to(device)                  # ← GPU
-            labels = labels.to(device)                  # ← GPU
-            
+    for _ in range(1): # 1 Epoch
+        for img, lbl in loader:
+            img, lbl = img.to(device), lbl.to(device)
             optimizer.zero_grad()
-            output = model(images)
-            loss = criterion(output, labels)
+            loss = criterion(model(img), lbl)
             loss.backward()
             optimizer.step()
-    
-    print("   [Client 1] Training Complete.")
-    final_weights = model.state_dict()
-    encrypted_weights, key = encrypt_data(final_weights)
-    print(f"   [Client 1] 🔐 Encrypted with E91 Key: {key[:8]}...")
-    
-    return encrypted_weights, key
+            
+    return encrypt_data(model.state_dict())

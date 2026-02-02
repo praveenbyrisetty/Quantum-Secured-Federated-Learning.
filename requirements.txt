@@ -1,11 +1,22 @@
-flwr==1.11.1  # For FL simulation
-pennylane==0.38.0  # For quantum extensions (optional)
+# Core Deep Learning Framework
 torch==2.4.1
 torchvision==0.19.1
-flwr-datasets==0.3.0  # For loading datasets like CIFAR/MNIST
-scikit-learn==1.5.2  # For any metrics (optional)
+
+# Quantum Computing Simulation
+qiskit==1.2.4
+qiskit-aer==0.15.0
+
+# Cryptography & Security
+cryptography==43.0.1
+
+# Configuration Management
+PyYAML==6.0.1
+
+# Data Processing
 numpy==1.26.4
-qiskit==1.2.4  # For quantum key simulation
-qiskit-aer==0.15.0  # Simulator backend for Qiskit (add this if not installed)
-matplotlib==3.9.2  # For plotting
-cryptography==43.0.1  # For Fernet encryption
+
+# Visualization
+matplotlib==3.9.2
+
+# Streamlit UI
+streamlit==1.39.0

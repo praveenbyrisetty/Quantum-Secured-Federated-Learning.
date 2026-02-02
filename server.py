@@ -1,168 +1,147 @@
 import streamlit as st
 import torch
 import numpy as np
+import os
 import matplotlib.pyplot as plt
-import time
-from model import UniversalModel
-from data_setup import get_hetero_dataloaders
+from multi_modal_model import MultiModalFederatedModel
 from quantum_e91 import decrypt_data
+from data_setup import get_image_dataset, TextDataset, TabularDataset
+from config_loader import load_config
 from client_1 import run_client_1
 from client_2 import run_client_2
 from client_3 import run_client_3
 
-# --- PAGE CONFIGURATION (Browser Tab Title & Icon) ---
-st.set_page_config(page_title="Quantum Shield AI", page_icon="🛡️", layout="wide")
-
-# --- CUSTOM CSS (To make it look like a Cyber Security Tool) ---
-st.markdown("""
-<style>
-    .stApp { background-color: #0e1117; }
-    h1 { color: #00ff41; font-family: 'Courier New', monospace; }
-    .stButton>button { background-color: #262730; color: #00ff41; border: 1px solid #00ff41; }
-    .stMetric { background-color: #262730; padding: 10px; border-radius: 5px; border-left: 5px solid #00ff41; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- GLOBAL VARIABLES ---
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-classes = ['Plane', 'Car', 'Bird', 'Cat', 'Deer', 
-           'Dog', 'Frog', 'Horse', 'Ship', 'Truck']
-
-# --- HELPER FUNCTIONS ---
-def aggregate_weights(updates):
-    avg_weights = {key: updates[0][key].clone() for key in updates[0]}
-    for key in avg_weights:
+# --- HELPERS ---
+def secure_aggregate(updates):
+    # Simple FedAvg
+    if not updates: return None
+    avg = {k: updates[0][k].clone() for k in updates[0]}
+    for k in avg:
         for i in range(1, len(updates)):
-            avg_weights[key] += updates[i][key]
-        avg_weights[key] = torch.div(avg_weights[key], len(updates))
-    return avg_weights
+            avg[k] += updates[i][k]
+        avg[k] = torch.div(avg[k], len(updates))
+    return avg
 
-@st.cache_resource
-def load_data():
-    return get_hetero_dataloaders()
+def save_uploaded_file(uploaded_file, filename):
+    if not os.path.exists("./data/uploads"): os.makedirs("./data/uploads")
+    path = os.path.join("./data/uploads", filename)
+    with open(path, "wb") as f: f.write(uploaded_file.getbuffer())
+    return path
 
-# --- MAIN APP LOGIC ---
+# --- MAIN CONFIG ---
+st.set_page_config(page_title="FLQC Universal", layout="wide", page_icon="🌐")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# --- APP ---
 def main():
-    st.title("🛡️ QUANTUM-FEDERATED DEFENSE GRID")
-    st.markdown("### 🔒 Secure Surveillance System (E91 Protocol Active)")
-    
-    # Initialize Session State (To remember the model after training)
-    if 'model' not in st.session_state:
-        st.session_state.model = UniversalModel().to(device)
-        st.session_state.trained = False
-        st.session_state.history = {'rounds': [], 'acc': []}
+    st.title("🛡️ FLQC: Secure Multi-Modal System")
+    st.markdown("### Image • Text • Sensors")
 
-    # --- SIDEBAR (System Controls) ---
+    # 1. SETUP GLOBAL MODELS
+    if 'models' not in st.session_state:
+        st.session_state.models = {
+            'image': MultiModalFederatedModel('image').to(device),
+            'text': MultiModalFederatedModel('text').to(device),
+            'tabular': MultiModalFederatedModel('tabular').to(device)
+        }
+        st.session_state.trained = False
+
+    # 2. SIDEBAR CONFIG
     with st.sidebar:
-        st.header("⚙️ System Control")
-        st.write(f"**Hardware:** {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
+        st.header("⚙️ Data Configuration")
         
-        if st.button("🚀 INITIALIZE TRAINING"):
+        # C1: Images
+        st.subheader("Client 1: Traffic (Images)")
+        img_path = st.text_input("Image Folder Path", value="./data/images")
+        
+        # C2: Text
+        st.subheader("Client 2: Security (Logs)")
+        txt_file = st.file_uploader("Upload Log File (.txt)", type=['txt'])
+        txt_path = "./data/test.txt"
+        if txt_file: txt_path = save_uploaded_file(txt_file, "logs.txt")
+        
+        # C3: Sensors
+        st.subheader("Client 3: IoT (Sensors)")
+        csv_file = st.file_uploader("Upload Sensor Data (.csv)", type=['csv'])
+        csv_path = "./data/table.csv"
+        if csv_file: csv_path = save_uploaded_file(csv_file, "sensors.csv")
+
+        if st.button("🚀 START TRAINING"):
             st.session_state.trained = False
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+            progress = st.progress(0)
+            status = st.empty()
             
-            # Get Data
-            _, test_loaders = load_data()
-            global_weights = st.session_state.model.state_dict()
+            rounds = 5
+            for r in range(1, rounds+1):
+                status.write(f"🔄 Round {r}/{rounds}: Dispatching specialized models...")
+                
+                # --- TRAFFIC (Image) ---
+                w_img = st.session_state.models['image'].state_dict()
+                enc1, k1 = run_client_1(w_img, r, device, data_path=img_path)
+                dec1 = decrypt_data(enc1, k1)
+                new_img = secure_aggregate([dec1]) # Aggregating 1 client (Simulated)
+                if new_img: st.session_state.models['image'].load_state_dict(new_img)
+                
+                # --- SECURITY (Text) ---
+                w_txt = st.session_state.models['text'].state_dict()
+                enc2, k2 = run_client_2(w_txt, r, device, data_path=txt_path)
+                dec2 = decrypt_data(enc2, k2)
+                new_txt = secure_aggregate([dec2])
+                if new_txt: st.session_state.models['text'].load_state_dict(new_txt)
+
+                # --- IOT (Sensors) ---
+                w_tab = st.session_state.models['tabular'].state_dict()
+                enc3, k3 = run_client_3(w_tab, r, device, data_path=csv_path)
+                dec3 = decrypt_data(enc3, k3)
+                new_tab = secure_aggregate([dec3])
+                if new_tab: st.session_state.models['tabular'].load_state_dict(new_tab)
+                
+                progress.progress(int(r/rounds * 100))
             
-            # Training Loop
-            total_rounds = 5
-            for round_num in range(1, total_rounds + 1):
-                status_text.write(f"📡 Communication Round {round_num}/{total_rounds}: Dispatching Models...")
-                
-                # Clients Train
-                enc1, key1 = run_client_1(global_weights, local_epochs=1, device=device)
-                enc2, key2 = run_client_2(global_weights, local_epochs=1, device=device)
-                enc3, key3 = run_client_3(global_weights, local_epochs=1, device=device)
-                
-                # Aggregation
-                updates = [decrypt_data(enc1, key1), decrypt_data(enc2, key2), decrypt_data(enc3, key3)]
-                global_weights = aggregate_weights(updates)
-                st.session_state.model.load_state_dict(global_weights)
-                
-                # Update Progress
-                progress_bar.progress(round_num * 20)
-                st.session_state.history['rounds'].append(round_num)
-                # Fake accuracy curve for speed in demo, or calculate real if preferred
-                st.session_state.history['acc'].append(60 + (round_num * 5) + np.random.randint(-2, 3))
-                
-            status_text.success("✅ SYSTEM ONLINE: Global Model Converged.")
+            status.success("✅ Multi-Modal Training Complete")
             st.session_state.trained = True
 
-    # --- DASHBOARD AREA ---
+    # 3. DASHBOARD
     if st.session_state.trained:
-        _, test_loaders = load_data()
-        l1, l2, l3 = test_loaders
+        st.divider()
+        t1, t2, t3 = st.tabs(["🚗 Traffic Vision", "📝 Security Logs", "📊 IoT Sensors"])
         
-        # Tabs for Clients
-        tab1, tab2, tab3 = st.tabs(["🚗 GATE (Traffic)", "🐅 PERIMETER (Wildlife)", "🔢 LAB (Biometrics)"])
-        
-        # Logic for each tab
-        current_loader = None
-        target_name = ""
-        
-        with tab1:
-            st.write("Monitoring Main Gate Feed...")
-            if st.button("🔍 SCAN VEHICLE"):
-                current_loader = l1
-                target_name = "GATE"
-                
-        with tab2:
-            st.write("Monitoring Fence Line...")
-            if st.button("🔍 SCAN WILDLIFE"):
-                current_loader = l2
-                target_name = "PERIMETER"
+        # TRAFFIC TAB
+        with t1:
+            if st.button("Scan Camera (Test)"):
+                try:
+                    ds = get_image_dataset(img_path)
+                    if len(ds)>0:
+                        img, _ = ds[np.random.randint(0, len(ds))]
+                        with torch.no_grad():
+                            pred = st.session_state.models['image'](img.unsqueeze(0).to(device)).argmax()
+                        st.image(img.permute(1,2,0).numpy()/2+0.5, width=150)
+                        st.metric("Detected", ["Plane","Car","Ship","Truck"][pred])
+                except Exception as e: st.error(f"Image Load Error: {e}")
 
-        with tab3:
-            st.write("Monitoring Pin-Pad...")
-            if st.button("🔍 SCAN DIGIT"):
-                current_loader = l3
-                target_name = "LAB"
+        # LOGS TAB
+        with t2:
+            if st.button("Analyze Log (Test)"):
+                ds = TextDataset(path=txt_path)
+                if len(ds)>0:
+                    txt, lbl = ds[np.random.randint(0, len(ds))]
+                    with torch.no_grad():
+                        pred = st.session_state.models['text'](txt.unsqueeze(0).to(device)).argmax()
+                    st.code(f"Log ID: {txt[0:5]}...")
+                    st.metric("Status", "🚨 THREAT" if pred==1 else "✅ SAFE")
 
-        # INFERENCE DISPLAY
-        if current_loader:
-            # 1. Get Image
-            data_iter = iter(current_loader)
-            images, labels = next(data_iter)
-            img_tensor = images[0].unsqueeze(0).to(device)
-            real_label = labels[0].item()
-            
-            # 2. Predict
-            with torch.no_grad():
-                pred_idx = st.session_state.model(img_tensor).argmax().item()
-            
-            # 3. Decode
-            if current_loader == l3:
-                real_text = f"Digit {real_label-10}" if real_label >= 10 else f"Digit {real_label}"
-                pred_text = f"Digit {pred_idx-10}" if pred_idx >= 10 else f"Digit {pred_idx}"
-            else:
-                real_text = classes[real_label] if real_label < 10 else f"Digit {real_label-10}"
-                pred_text = classes[pred_idx] if pred_idx < 10 else f"Digit {pred_idx-10}"
-            
-            is_match = (real_label == pred_idx)
-            
-            # 4. Show Results (Columns)
-            col1, col2, col3 = st.columns([1, 1, 2])
-            
-            with col1:
-                st.image(np.transpose(images[0].cpu().numpy(), (1, 2, 0)) / 2 + 0.5, caption="Live Feed Input", width=200)
-            
-            with col2:
-                st.metric(label="AI PREDICTION", value=pred_text.upper())
-                if is_match:
-                    st.success("✅ CONFIRMED MATCH")
-                else:
-                    st.error("⚠️ SECURITY ALERT")
-                    
-            with col3:
-                # Chart
-                st.subheader("Confidence Analytics")
-                chart_data = {"Round": st.session_state.history['rounds'], "Accuracy": st.session_state.history['acc']}
-                st.line_chart(chart_data, x="Round", y="Accuracy")
-
+        # SENSORS TAB
+        with t3:
+            if st.button("Read Sensor (Test)"):
+                ds = TabularDataset(path=csv_path)
+                if len(ds)>0:
+                    dat, lbl = ds[np.random.randint(0, len(ds))]
+                    with torch.no_grad():
+                        pred = st.session_state.models['tabular'](dat.unsqueeze(0).to(device)).argmax()
+                    st.bar_chart(dat.numpy())
+                    st.metric("System State", ["Normal","Warning","Critical"][pred] if pred<3 else "Unknown")
     else:
-        st.info("👋 Welcome Commander. Please click 'INITIALIZE TRAINING' in the sidebar to boot the system.")
+        st.info("👈 Configure data sources and start training.")
 
 if __name__ == "__main__":
     main()

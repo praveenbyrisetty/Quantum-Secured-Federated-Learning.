@@ -1,0 +1,103 @@
+# FLQC Configuration File
+# Quantum-Secured Federated Learning Configuration
+
+# ==========================================
+# TRAINING PARAMETERS
+# ==========================================
+training:
+  num_rounds: 5
+  epochs_per_round: 1
+
+  # Client-specific learning rates
+  learning_rates:
+    image: 0.01 # SGD for CNN
+    text: 0.001 # Adam for LSTM
+    tabular: 0.001 # Adam for MLP
+
+  # Batch sizes
+  batch_sizes:
+    image: 32
+    text: 32
+    tabular: 32
+
+  # Data chunk sizes per round
+  chunk_sizes:
+    image: 2000
+    text: 1000
+    tabular: 1000
+
+# ==========================================
+# DIFFERENTIAL PRIVACY PARAMETERS
+# ==========================================
+privacy:
+  enabled: true
+  epsilon: 1.0 # Privacy budget (lower = more private)
+  delta: 1e-5 # Privacy parameter
+  max_grad_norm: 1.0 # Gradient clipping threshold
+  noise_multiplier: 0.01 # Noise scale for DP
+
+# ==========================================
+# SECURITY PARAMETERS
+# ==========================================
+security:
+  # Aggregation defense
+  aggregation_method: "fedavg" # Options: fedavg, krum, trimmed_mean
+  norm_threshold: 1500.0 # Maximum allowed update norm
+
+  # Byzantine-robust aggregation (when enabled)
+  krum_f: 1 # Number of Byzantine clients to tolerate
+  trimmed_mean_beta: 0.1 # Fraction to trim from each end
+
+  # Encryption
+  quantum_key_length: 128 # Bits for quantum key generation
+  enable_encryption: true
+
+# ==========================================
+# DATA PARAMETERS
+# ==========================================
+data:
+  paths:
+    images: "./data/images"
+    text: "./data/test.txt"
+    tabular: "./data/table.csv"
+
+  # Synthetic data generation
+  synthetic:
+    text_vocab_size: 5000
+    text_seq_length: 20
+    tabular_input_dim: 10
+
+# ==========================================
+# MODEL PARAMETERS
+# ==========================================
+model:
+  image:
+    input_channels: 3
+    num_classes: 4
+
+  text:
+    vocab_size: 5000
+    embed_dim: 64
+    hidden_dim: 128
+    num_classes: 2
+
+  tabular:
+    input_dim: 10
+    num_classes: 3
+
+# ==========================================
+# SYSTEM PARAMETERS
+# ==========================================
+system:
+  device: "cuda" # Options: cuda, cpu, auto
+  seed: 42
+  log_level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR
+
+# ==========================================
+# UI PARAMETERS
+# ==========================================
+ui:
+  page_title: "FLQC Secure Framework"
+  theme: "dark"
+  show_metrics: true
+  show_privacy_budget: true
