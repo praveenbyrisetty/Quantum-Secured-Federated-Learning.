@@ -1,4 +1,4 @@
-# FLQC: Quantum-Inspired Federated Learning Architecture
+# FLQC: Quantum-Secured Federated Learning
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.4.1-orange.svg)](https://pytorch.org/)
@@ -7,31 +7,32 @@
 
 ## Overview
 
-FLQC is a **multi-modal federated learning framework** with quantum-inspired security features. It demonstrates privacy-preserving machine learning across three different data modalities (images, text, and tabular data) using differential privacy, Byzantine-robust aggregation, and quantum-inspired encryption.
+FLQC is a **quantum-secured federated learning framework** with a multi-layered security architecture. It demonstrates privacy-preserving machine learning across heterogeneous data distributions using E91 quantum key distribution (simulated), Byzantine-robust aggregation, and differential privacy.
 
 ### Key Features
 
-- **Multi-Modal Architecture**: Trains three separate models simultaneously:
-  - 🚗 **Image Model** (CNN): Vehicle classification from CIFAR-10
-  - 📝 **Text Model** (LSTM): Security log analysis
-  - 📊 **Tabular Model** (MLP): IoT sensor anomaly detection
+- **Heterogeneous Data Distribution**: Three clients with different datasets:
+  - 🚗 **Client 1**: CIFAR-10 non-living things (airplane, automobile, ship, truck)
+  - 🐾 **Client 2**: CIFAR-10 living things (bird, cat, deer, dog, frog, horse)
+  - 🔢 **Client 3**: MNIST handwritten digits (0-9, preprocessed to 32×32 RGB)
 
-- **Privacy Protection**:
-  - Differential Privacy with configurable ε/δ budgets
-  - Gradient clipping and calibrated Gaussian noise
-  - Quantum-seeded randomness for noise generation
+- **3-Layer Security Architecture**:
+  - **Layer 1 — Communication**: E91 quantum key distribution + Fernet AES-128 encryption of model parameters + CHSH entanglement verification
+  - **Layer 2 — Aggregation**: Krum + Trimmed Mean hybrid (default), with anomaly detection and norm clipping
+  - **Layer 3 — Endpoint**: Gradient clipping + Differential Privacy noise injection
 
-- **Security Features**:
-  - Quantum-inspired E91 key distribution (simulated)
-  - AES-128 encryption via Fernet
-  - Byzantine-robust aggregation (FedAvg, Krum, Trimmed Mean)
-  - Poisoning attack detection via norm thresholds
+- **4 Aggregation Strategies** (selectable in sidebar):
+  - **Krum + Trimmed Mean** (default, recommended): Krum scores and excludes suspicious clients, then Trimmed Mean aggregates the rest
+  - **Trimmed Mean**: Removes extreme parameter values before averaging
+  - **Krum**: Selects the single most trustworthy client update
+  - **FedAvg**: Standard weighted average (baseline, no defense)
 
-- **Production-Ready**:
-  - YAML-based configuration system
-  - Comprehensive logging and error handling
-  - Modular, well-documented codebase
-  - Interactive Streamlit UI
+- **Interactive Streamlit UI**:
+  - Real-time training visualization per client
+  - Per-round security reports (anomaly detection, encryption status, CHSH values)
+  - Security summary dashboard
+  - Global model evaluation with confusion matrix
+  - Image prediction interface
 
 ### ⚠️ Important: Quantum Simulation Disclosure
 
@@ -40,8 +41,8 @@ FLQC is a **multi-modal federated learning framework** with quantum-inspired sec
 **What this means:**
 
 - ✅ Demonstrates quantum-inspired concepts and workflows
-- ✅ Uses quantum circuit simulation for key generation
-- ✅ Provides high-quality pseudorandom number generation
+- ✅ Uses quantum circuit simulation (Bell pairs) for key generation
+- ✅ Implements CHSH inequality verification for eavesdropper detection
 - ❌ Does NOT provide quantum-level security guarantees
 - ❌ Does NOT use real quantum entanglement
 - ❌ Does NOT protect against quantum computer attacks
@@ -57,22 +58,45 @@ FLQC is a **multi-modal federated learning framework** with quantum-inspired sec
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Federated Server                     │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Secure Aggregation (FedAvg/Krum/Trimmed Mean)   │   │
-│  │  + Poisoning Detection + Privacy Budget Tracking │   │
-│  └──────────────────────────────────────────────────┘   │
-└───────────┬──────────────┬──────────────┬───────────────┘
-            │              │              │
-    ┌───────▼──────┐ ┌────▼─────┐ ┌──────▼──────┐
-    │  Client 1    │ │ Client 2 │ │  Client 3   │
-    │  (Images)    │ │  (Text)  │ │  (Tabular)  │
-    │              │ │          │ │             │
-    │  CNN Model   │ │   LSTM   │ │  MLP Model  │
-    │  + DP Noise  │ │ + DP     │ │  + DP Noise │
-    │  + E91 Enc   │ │ + E91    │ │  + E91 Enc  │
-    └──────────────┘ └──────────┘ └─────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                      Federated Server (server.py)                │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │  Secure Aggregation: Krum + Trimmed Mean (Hybrid)          │  │
+│  │  + Anomaly Detection + Norm Clipping                       │  │
+│  └────────────────────────────────────────────────────────────┘  │
+└──────────┬──────────────────┬──────────────────┬────────────────┘
+           │ 🔐 Encrypted     │ 🔐 Encrypted     │ 🔐 Encrypted
+   ┌───────▼──────┐   ┌───────▼──────┐    ┌──────▼───────┐
+   │  Client 1    │   │  Client 2    │    │  Client 3    │
+   │  CIFAR-10    │   │  CIFAR-10    │    │    MNIST     │
+   │  Non-living  │   │   Living     │    │   Digits     │
+   │              │   │              │    │              │
+   │  CNN Model   │   │  CNN Model   │    │  CNN Model   │
+   │  + Grad Clip │   │  + Grad Clip │    │  + Grad Clip │
+   │  + DP Noise  │   │  + DP Noise  │    │  + DP Noise  │
+   │  + E91 Enc   │   │  + E91 Enc   │    │  + E91 Enc   │
+   └──────────────┘   └──────────────┘    └──────────────┘
+```
+
+### Security Flow Per Training Round
+
+```
+1. Server sends global model weights to each client
+2. Each client:
+   a. Generates quantum key via E91 protocol (simulated)
+   b. Verifies entanglement via CHSH inequality test
+   c. Trains locally with gradient clipping (limits data leakage)
+   d. Adds Differential Privacy noise (prevents data reconstruction)
+   e. Encrypts weights with quantum key (protects during transmission)
+   f. Sends encrypted weights + key to server
+3. Server:
+   a. Decrypts all client updates
+   b. Runs anomaly detection (flags suspicious norms)
+   c. Applies Krum scoring (ranks clients by trustworthiness)
+   d. Excludes least trustworthy client(s)
+   e. Applies Trimmed Mean on remaining trusted updates
+   f. Produces new global model
+4. Repeat for N rounds
 ```
 
 ---
@@ -111,14 +135,6 @@ FLQC is a **multi-modal federated learning framework** with quantum-inspired sec
    pip install -r requirements.txt
    ```
 
-4. **Configure the system** (optional)
-
-   Edit `config.yaml` to customize:
-   - Training parameters (learning rates, epochs, batch sizes)
-   - Privacy budgets (epsilon, delta)
-   - Security settings (aggregation method, thresholds)
-   - Data paths
-
 ---
 
 ## Usage
@@ -133,45 +149,13 @@ streamlit run server.py
 
 Then:
 
-1. Click "🚀 INITIALIZE TRAINING" in the sidebar
-2. Watch the training progress across 3 clients
-3. Test the trained models in the interactive tabs
-
-### Configuration
-
-The system is configured via `config.yaml`. Key parameters:
-
-```yaml
-training:
-  num_rounds: 5 # Number of federated rounds
-  learning_rates:
-    image: 0.01 # CNN learning rate
-    text: 0.001 # LSTM learning rate
-    tabular: 0.001 # MLP learning rate
-
-privacy:
-  enabled: true
-  epsilon: 1.0 # Privacy budget (lower = more private)
-  delta: 1e-5
-  max_grad_norm: 1.0 # Gradient clipping threshold
-
-security:
-  aggregation_method: "fedavg" # Options: fedavg, krum, trimmed_mean
-  norm_threshold: 1500.0 # Poisoning detection threshold
-```
-
-### Running Tests
-
-```bash
-# Test encryption module
-python quantum_e91.py
-
-# Test configuration loading
-python config_loader.py
-
-# Check imports
-python -c "from client_1 import run_client_1; from client_2 import run_client_2; from client_3 import run_client_3; print('✓ All imports successful')"
-```
+1. Select an aggregation strategy in the sidebar (Krum + Trimmed Mean is default)
+2. Set the number of training rounds
+3. Click **"🚀 START FL TRAINING"**
+4. Watch live training progress with security indicators per client
+5. Review per-round security reports (anomaly detection, CHSH values)
+6. View global model evaluation with confusion matrix
+7. Test predictions by uploading images
 
 ---
 
@@ -179,46 +163,49 @@ python -c "from client_1 import run_client_1; from client_2 import run_client_2;
 
 ```
 .
+├── server.py                # Streamlit UI + FL orchestration + aggregation strategies
+├── client_flwr.py           # FL client with gradient clipping, DP noise, encryption
+├── quantum_e91.py           # E91 quantum key generation, CHSH verification, encryption
+├── multi_modal_model.py     # CNN model architecture (CIFAR-10/MNIST)
+├── data_setup.py            # Dataset loaders (CIFAR-10 partitioning + MNIST)
 ├── config.yaml              # Configuration file
-├── config_loader.py         # Configuration management
-├── constants.py             # Named constants
-├── utils.py                 # Utility functions (aggregation, DP, metrics)
-├── quantum_e91.py           # Quantum-inspired encryption
-├── multi_modal_model.py     # Neural network models
-├── data_setup.py            # Dataset loaders
-├── client_1.py              # Image classification client
-├── client_2.py              # Text classification client
-├── client_3.py              # Tabular classification client
-├── server.py                # Streamlit UI + orchestration
 ├── requirements.txt         # Python dependencies
-└── data/                    # Data directory
-    ├── images/              # Custom images (optional)
-    ├── test.txt             # Text data (optional)
-    └── table.csv            # Tabular data (optional)
+├── GPU_SETUP.md             # GPU setup instructions
+├── README.md                # This file
+└── data/                    # Data directory (auto-created on first run)
 ```
 
 ---
 
 ## Features in Detail
 
-### Differential Privacy
+### Aggregation Strategies
 
-- **Gradient Clipping**: Bounds sensitivity before adding noise
-- **Calibrated Noise**: Gaussian noise scaled by privacy parameters
-- **Privacy Budget Tracking**: Monitors cumulative ε spent across rounds
-- **Quantum Seeding**: Uses quantum circuits for high-quality randomness
+| Strategy                | Security | How It Works                                                     | Best For                     |
+| ----------------------- | -------- | ---------------------------------------------------------------- | ---------------------------- |
+| **Krum + Trimmed Mean** | ⭐⭐⭐   | Krum excludes suspicious clients, Trimmed Mean averages the rest | Maximum security (default)   |
+| **Trimmed Mean**        | ⭐⭐     | Sorts values, removes extremes, averages middle                  | Balanced security + accuracy |
+| **Krum**                | ⭐⭐     | Selects single most trustworthy update                           | Byzantine fault tolerance    |
+| **FedAvg**              | ❌       | Simple weighted average                                          | Trusted environments only    |
 
-### Byzantine-Robust Aggregation
+### Communication Security (Layer 1)
 
-- **FedAvg**: Standard averaging (default)
-- **Krum**: Selects most trustworthy update based on distance to neighbors
-- **Trimmed Mean**: Removes extreme values before averaging
+- **E91 Quantum Key Distribution**: Simulates entangled Bell pairs using Qiskit for key generation
+- **CHSH Inequality Test**: Verifies entanglement integrity (S > 2.0 = no eavesdropper)
+- **Fernet Encryption**: AES-128-CBC + HMAC for authenticated encryption of model parameters
+- **Per-client Keys**: Each client generates a unique quantum key per round
 
-### Quantum-Inspired Security
+### Endpoint Security (Layer 3)
 
-- **E91 Protocol Simulation**: Creates entangled Bell pairs for key generation
-- **Fernet Encryption**: AES-128 in CBC mode with HMAC
-- **Key Validation**: Ensures encryption integrity
+- **Gradient Clipping**: Bounds gradient norm during local training (`max_grad_norm = 1.0`)
+- **Differential Privacy Noise**: Gaussian noise injection after training (`noise_multiplier = 0.01`)
+- **Security Metrics Reporting**: Each client reports clip count, DP noise level, and encryption status
+
+### Anomaly Detection
+
+- **Statistical Detection**: Flags clients whose update norm is > 2σ from the mean
+- **Threshold Detection**: Rejects updates exceeding absolute norm threshold (1500.0)
+- **Per-round Reports**: Visible in the UI after each aggregation round
 
 ---
 
@@ -227,27 +214,18 @@ python -c "from client_1 import run_client_1; from client_2 import run_client_2;
 ### Import Errors
 
 ```
-ModuleNotFoundError: No module named 'yaml'
+ModuleNotFoundError: No module named 'flwr'
 ```
 
-**Solution**: Install PyYAML: `pip install PyYAML`
+**Solution**: Make sure you're in the virtual environment: `venv\Scripts\activate`
 
 ### CUDA Out of Memory
 
-**Solution**: Reduce batch sizes in `config.yaml` or use CPU:
-
-```yaml
-system:
-  device: "cpu"
-```
+**Solution**: The system automatically falls back to CPU if CUDA is unavailable. For explicit CPU mode, the device is auto-detected in `server.py`.
 
 ### Dataset Not Found
 
-The system automatically falls back to CIFAR-10 and synthetic data if local files are missing. To use custom data:
-
-- Place images in `data/images/` with subdirectories for each class
-- Add text logs to `data/test.txt`
-- Add CSV with features in `data/table.csv`
+CIFAR-10 and MNIST are automatically downloaded on first run to the `data/` directory.
 
 ---
 
@@ -256,8 +234,8 @@ The system automatically falls back to CIFAR-10 and synthetic data if local file
 Contributions are welcome! Areas for improvement:
 
 - Integration with real quantum hardware
-- Additional aggregation algorithms
-- More sophisticated privacy accounting
+- Additional aggregation algorithms (e.g., Median, Bulyan)
+- More sophisticated privacy accounting (Rényi DP)
 - Distributed deployment across multiple machines
 - Additional model architectures
 
@@ -277,7 +255,7 @@ If you use this code in your research, please cite:
 
 ```bibtex
 @software{flqc2026,
-  title={FLQC: Quantum-Inspired Federated Learning Architecture},
+  title={FLQC: Quantum-Secured Federated Learning},
   author={Praveen Byrisetty},
   year={2026},
   url={https://github.com/praveenbyrisetty/Quantum-Secured-Federated-Learning}
@@ -288,6 +266,7 @@ If you use this code in your research, please cite:
 
 ## Acknowledgments
 
-- Built with [PyTorch](https://pytorch.org/), [Qiskit](https://qiskit.org/), and [Streamlit](https://streamlit.io/)
+- Built with [PyTorch](https://pytorch.org/), [Qiskit](https://qiskit.org/), [Flower](https://flower.ai/), and [Streamlit](https://streamlit.io/)
 - Inspired by federated learning research and quantum cryptography
 - CIFAR-10 dataset from [Alex Krizhevsky](https://www.cs.toronto.edu/~kriz/cifar.html)
+- MNIST dataset from [Yann LeCun](http://yann.lecun.com/exdb/mnist/)

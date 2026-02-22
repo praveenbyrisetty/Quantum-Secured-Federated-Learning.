@@ -17,6 +17,9 @@ numpy==1.26.4
 
 # Visualization
 matplotlib==3.9.2
+seaborn==0.13.2
+scikit-learn==1.5.1
 
 # Streamlit UI
 streamlit==1.39.0
+flwr[simulation]==1.11.0

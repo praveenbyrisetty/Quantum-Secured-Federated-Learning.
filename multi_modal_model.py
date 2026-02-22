@@ -1,56 +1,47 @@
+"""
+FLQC Image Classification Model
+CNN for heterogeneous federated learning (CIFAR-10 + MNIST)
+"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 class MultiModalFederatedModel(nn.Module):
-    def __init__(self, data_type='tabular'):
+    """CNN Model for CIFAR-10 Image Classification (10 classes)"""
+    def __init__(self, data_type='image'):
         super(MultiModalFederatedModel, self).__init__()
-        self.data_type = data_type
         
-        # 1. IMAGE MODEL (CNN) - For Traffic
-        if data_type == 'image':
-            self.conv1 = nn.Conv2d(3, 6, 5)
-            self.pool = nn.MaxPool2d(2, 2)
-            self.conv2 = nn.Conv2d(6, 16, 5)
-            self.fc1 = nn.Linear(16 * 5 * 5, 120)
-            self.fc2 = nn.Linear(120, 84)
-            self.fc3 = nn.Linear(84, 4) # Classes: Plane, Car, Ship, Truck
-
-        # 2. TEXT MODEL (LSTM) - For Security Logs
-        elif data_type == 'text':
-            self.embedding = nn.Embedding(5000, 64)
-            self.lstm = nn.LSTM(64, 128, batch_first=True)
-            self.fc = nn.Linear(128, 2) # Classes: Safe, Suspicious
-
-        # 3. TABULAR MODEL (MLP) - For IoT Sensors
-        elif data_type == 'tabular':
-            self.ln1 = nn.Linear(10, 64)
-            self.ln2 = nn.Linear(64, 32)
-            self.ln3 = nn.Linear(32, 3) # Classes: Normal, Warning, Critical
+        # CNN Architecture for 32x32 RGB images
+        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.dropout = nn.Dropout(0.25)
+        
+        # Fully connected layers
+        self.fc1 = nn.Linear(128 * 4 * 4, 256)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 10)  # CIFAR-10 has 10 classes
 
     def forward(self, x):
-        if self.data_type == 'image':
-            x = self.pool(F.relu(self.conv1(x)))
-            x = self.pool(F.relu(self.conv2(x)))
-            x = torch.flatten(x, 1)
-            x = F.relu(self.fc1(x))
-            x = F.relu(self.fc2(x))
-            x = self.fc3(x)
-            return x
-            
-        elif self.data_type == 'text':
-            x = self.embedding(x)
-            # Take last output of LSTM-like structure or simplify
-            # For robustness in demo:
-            x = torch.mean(x, dim=1) # Average pooling for simplicity
-            x = self.fc(torch.randn(x.shape[0], 128).to(x.device)) # Placeholder if dim mismatch
-            return x
-            
-        elif self.data_type == 'tabular':
-            x = x.float()
-            x = F.relu(self.ln1(x))
-            x = F.relu(self.ln2(x))
-            x = self.ln3(x)
-            return x
+        # Conv Block 1
+        x = F.relu(self.conv1(x))
+        x = self.pool(x)  # 32x32 -> 16x16
+        
+        # Conv Block 2
+        x = F.relu(self.conv2(x))
+        x = self.pool(x)  # 16x16 -> 8x8
+        
+        # Conv Block 3
+        x = F.relu(self.conv3(x))
+        x = self.pool(x)  # 8x8 -> 4x4
+        x = self.dropout(x)
+        
+        # Flatten and FC layers
+        x = torch.flatten(x, 1)
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
         
         return x
