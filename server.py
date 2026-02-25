@@ -2,13 +2,17 @@
 FLQC Server - Quantum-Secured Federated Learning Server
 
 WHAT THIS FILE DOES:
-This is the CENTRAL SERVER that coordinates all clients.
+This is the CENTRAL SERVER that coordinates 3 hospital clients
+for skin lesion classification using the HAM10000 dataset.
 It runs a Streamlit web UI where you can:
-1. Start federated training
-2. Watch live training progress
+1. Start federated training across 3 simulated hospitals
+2. Watch live training progress per hospital
 3. See security status for each round
-4. Evaluate the final global model
-5. Test predictions with uploaded images
+4. Evaluate the global model on all 7 skin lesion types
+5. Test predictions with uploaded dermoscopic images
+
+DATASET: HAM10000 — 10,015 dermoscopic images, 7 classes:
+  akiec, bcc, bkl, df, mel, nv, vasc
 
 SECURITY FEATURES IN AGGREGATION:
 - Trimmed Mean: Removes extreme values before averaging (resists poisoning)
@@ -28,18 +32,68 @@ import time
 from typing import List, Tuple
 from collections import OrderedDict
 from flwr.common import Parameters, FitRes, Scalar, parameters_to_ndarrays, ndarrays_to_parameters
-from multi_modal_model import MultiModalFederatedModel
+from multi_modal_model import MultiModalFederatedModel, NUM_CLASSES
 from client_flwr import FLQCClient
-from data_setup import get_client_dataset
+from data_setup import get_client_dataset, get_full_test_dataset, CLASS_NAMES, CLASS_DISPLAY, CLIENT_CLASSES, IMAGE_SIZE
 from quantum_e91 import decrypt_parameters
 
+
+def verify_client_encryption(metrics: dict) -> dict:
+    """
+    Verify the encryption pipeline by decrypting the client's encrypted params.
+    
+    This proves the encryption is FUNCTIONAL, not cosmetic:
+    1. Client encrypts params with quantum key
+    2. Server receives encrypted blob + key in metrics
+    3. Server decrypts and verifies the params can be recovered
+    
+    Returns: dict with verification status and details
+    """
+    result = {"verified": False, "status": "not_attempted", "detail": ""}
+    
+    encrypted_data = metrics.get("encrypted_data")
+    quantum_key = metrics.get("quantum_key_full", "")
+    
+    if encrypted_data is None:
+        result["status"] = "no_encrypted_data"
+        result["detail"] = "Client did not send encrypted data"
+        return result
+    
+    if not quantum_key:
+        result["status"] = "no_key"
+        result["detail"] = "No quantum key available"
+        return result
+    
+    try:
+        # Decode the key back to bytes
+        key_bytes = quantum_key.encode('utf-8') if isinstance(quantum_key, str) else quantum_key
+        
+        # Decrypt the parameters — this proves the encryption pipeline works
+        decrypted_params = decrypt_parameters(encrypted_data, key_bytes)
+        
+        result["verified"] = True
+        result["status"] = "decrypted"
+        result["detail"] = f"Successfully decrypted {len(decrypted_params)} parameter tensors"
+        result["decrypted_params"] = decrypted_params
+    except Exception as e:
+        result["status"] = "decryption_failed"
+        result["detail"] = f"Decryption error: {str(e)}"
+    
+    return result
+
 # --- MAIN CONFIG ---
-st.set_page_config(page_title="FLQC - Quantum FL", layout="wide", page_icon="🔐")
+st.set_page_config(page_title="FLQC - Skin Lesion FL", layout="wide", page_icon="🏥")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# CIFAR-10 class names
-CIFAR10_CLASSES = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
-                   'dog', 'frog', 'horse', 'ship', 'truck']
+# HAM10000 class display names
+HAM10000_CLASSES = [CLASS_DISPLAY[c] for c in CLASS_NAMES]
+
+# Client descriptions for UI
+CLIENT_LABELS = {
+    0: "🏥 Hospital A — Melanocytic (nv, mel)",
+    1: "🏥 Hospital B — Keratosis (bkl, bcc, akiec)",
+    2: "🏥 Hospital C — Vascular (vasc, df)",
+}
 
 
 # ==========================================
@@ -460,18 +514,16 @@ def main():
         st.session_state.trained_model_params = None
     if 'training_completed' not in st.session_state:
         st.session_state.training_completed = False
+    if 'training_results' not in st.session_state:
+        st.session_state.training_results = None
     
-    st.title(" Quantum-Secured Federated Learning")
-    st.markdown("### Homogeneous FL with E91 Entanglement Key Distribution")
+    st.title("Quantum-Enabled Federated Learning Architecture for secure Deep Models")
+    st.caption("Federated Learning across 3 Hospitals · HAM10000 Dataset · 7 Skin Lesion Types")
     
     # Sidebar configuration
     with st.sidebar:
-        st.header("⚙️ Training Configuration")
-        
-        st.metric("Number of Clients", "3", help="Client 1: Non-living CIFAR-10, Client 2: Living CIFAR-10, Client 3: MNIST")
-        st.metric("Heterogeneous Setup", "CIFAR-10 + MNIST", help="Clients use different datasets")
-        st.metric("Model", "CNN", help="Unified CNN architecture")
-        
+        st.header("⚙️ Configuration")
+        st.caption("3 Hospitals · HAM10000 · 7 Classes · CNN")
         st.divider()
         
         num_rounds = st.slider("Training Rounds", min_value=1, max_value=10, value=3)
@@ -483,19 +535,12 @@ def main():
         agg_method = st.selectbox(
             "Aggregation Strategy",
             options=["krum_trimmed_mean", "trimmed_mean", "krum", "fedavg"],
-            index=0,
-            help="Krum + Trimmed Mean (recommended): Krum filters bad clients, then Trimmed Mean aggregates the rest. "
-                 "Trimmed Mean: removes extreme values before averaging. "
-                 "Krum: selects most trustworthy single client. "
-                 "FedAvg: simple weighted average (no defense)."
+            index=0
         )
         
         st.divider()
-        
-        gpu_status = "✅ GPU Available" if torch.cuda.is_available() else "⚠️ CPU Only"
-        st.info(gpu_status)
-        
-        start_btn = st.button("🚀 START FL TRAINING", type="primary", use_container_width=True)
+        st.caption("✅ GPU" if torch.cuda.is_available() else "⚠️ CPU")
+        start_btn = st.button("🚀 START TRAINING", type="primary", width="stretch")
 
     # Main content
     if start_btn:
@@ -505,19 +550,8 @@ def main():
         progress_bar = st.progress(0)
         
         with training_container:
-            st.subheader("📡 Live Training Monitor")
-            
-            # Show active security features
-            sec_col1, sec_col2, sec_col3, sec_col4 = st.columns(4)
-            with sec_col1:
-                st.metric("🛡️ Aggregation", agg_method.replace("_", " ").title())
-            with sec_col2:
-                st.metric("🔐 Encryption", "E91 Quantum")
-            with sec_col3:
-                st.metric("🔒 DP Noise", "Enabled")
-            with sec_col4:
-                st.metric("✂️ Grad Clipping", "Enabled")
-            
+            st.subheader("📡 Federated Training Monitor")
+            st.caption(f"🛡️ {agg_method.replace('_',' ').title()} · 🔐 E91 Encryption · 🔒 DP · ✂️ Grad Clipping · 🏥 HAM10000")
             st.divider()
             
             # Initialize global model
@@ -546,13 +580,10 @@ def main():
             # Create containers for each client with headers
             for i, col in enumerate(client_cols):
                 with col:
-                    st.markdown(f"### Client {i+1}")
-                    if i == 0:
-                        st.caption("CIFAR-10")
-                    elif i == 1:
-                        st.caption("CIFAR-10")
-                    else:
-                        st.caption("MNIST Digits")
+                    client_classes = CLIENT_CLASSES.get(i, [])
+                    class_labels = ', '.join(client_classes)
+                    st.markdown(f"### 🏥 Hospital {chr(65+i)}")
+                    st.caption(f"{', '.join([CLASS_DISPLAY[c] for c in client_classes])}")
                     st.divider()
                     client_containers.append(col.container())
             
@@ -595,28 +626,29 @@ def main():
                                         st.error(f"❌ CHSH: {chsh_val:.3f}", icon="🔑")
                                 
                                 # Security details expander
-                                with st.expander("🔒 Security Details"):
-                                    # Encryption status
+                                with st.expander("🔒 Security"):
+                                    # Encryption
                                     enc_status = metrics.get("encryption_status", "N/A")
                                     if enc_status == "encrypted":
-                                        st.success("🔐 Parameters Encrypted")
+                                        dec_result = verify_client_encryption(metrics)
+                                        if dec_result["verified"]:
+                                            st.success("🔐 Encrypted → Decrypted ✅")
+                                        else:
+                                            st.error(f"Decryption failed: {dec_result['detail']}")
                                     elif enc_status == "failed":
                                         st.error("❌ Encryption Failed")
-                                    else:
-                                        st.warning("⚠️ Encryption Disabled")
                                     
-                                    # DP noise
-                                    dp_noise = metrics.get("dp_noise_level", 0)
-                                    st.info(f"🔒 DP Noise Level: {dp_noise:.6f}")
+                                    # DP
+                                    if metrics.get("dp_enabled", False):
+                                        dp_col1, dp_col2 = st.columns(2)
+                                        with dp_col1:
+                                            st.metric("ε (round)", f"{metrics.get('dp_epsilon_round', 0):.1f}")
+                                        with dp_col2:
+                                            st.metric("ε (total)", f"{metrics.get('dp_epsilon_cumulative', 0):.1f}")
+                                        st.caption(f"σ={metrics.get('dp_sigma',0):.4f} · δ={metrics.get('dp_delta',0):.0e} · clips={metrics.get('grad_clips',0)}")
                                     
-                                    # Gradient clipping
-                                    grad_clips = metrics.get("grad_clips", 0)
-                                    st.info(f"✂️ Gradient Clips: {grad_clips}")
-                                
-                                # Show key in expander
-                                with st.expander("View Quantum Key"):
-                                    quantum_key = metrics.get("quantum_key", "N/A")
-                                    st.code(quantum_key, language="text")
+                                    # Key
+                                    st.code(metrics.get('quantum_key', 'N/A'), language='text')
                         
                         time.sleep(0.1)
                     
@@ -684,244 +716,196 @@ def main():
                 st.session_state.trained_model_params = global_params
                 st.session_state.training_completed = True
                 
-                st.success(f"✅ Training Session Complete! Total Time: {total_time:.1f}s")
+                # Save all results to session state so they survive reruns
+                final_eps = max(
+                    [m.get("dp_epsilon_cumulative", 0) for _, _, m in fit_results],
+                    default=0
+                )
+                st.session_state.training_results = {
+                    'losses_history': losses_history,
+                    'accuracies_history': accuracies_history,
+                    'total_time': total_time,
+                    'agg_method': agg_method,
+                    'final_eps': final_eps,
+                }
+                
+                st.success(f"✅ Training Complete! Total Time: {total_time:.1f}s")
                 st.balloons()
-                
-                # --- RESULTS VISUALIZATION ---
-                st.divider()
-                st.subheader("📊 Training Results")
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Total Rounds", num_rounds)
-                    st.metric("Final Loss", f"{losses_history[-1]:.4f}")
-                    
-                with col2:
-                    st.metric("Clients", "3")
-                    st.metric("Final Accuracy", f"{accuracies_history[-1]:.2f}%")
-                    
-                with col3:
-                    st.metric("Training Time", f"{total_time:.1f}s")
-                    loss_improvement = ((losses_history[0] - losses_history[-1]) / losses_history[0] * 100) if losses_history[0] > 0 else 0
-                    st.metric("Loss ↓", f"{loss_improvement:.1f}%")
-                    
-                with col4:
-                    st.metric("Encryption", "E91 Quantum")
-                    acc_improvement = accuracies_history[-1] - accuracies_history[0] if len(accuracies_history) > 1 else 0
-                    st.metric("Accuracy ↑", f"{acc_improvement:.2f}%")
-                
-                # Charts
-                col_a, col_b = st.columns(2)
-                with col_a:
-                    st.markdown("**Training Loss Over Rounds**")
-                    st.line_chart(losses_history, use_container_width=True)
-                
-                with col_b:
-                    st.markdown("**Training Accuracy Over Rounds**")
-                    st.line_chart(accuracies_history, use_container_width=True)
-                
-                st.info("✓ All quantum entanglement keys verified successfully")
-                
-                # --- SECURITY SUMMARY ---
-                st.divider()
-                st.subheader("🛡️ Security Summary")
-                
-                sec_sum_col1, sec_sum_col2, sec_sum_col3, sec_sum_col4 = st.columns(4)
-                with sec_sum_col1:
-                    st.markdown("**Communication**")
-                    st.success("🔐 E91 Encrypted")
-                    st.caption("All model params encrypted with quantum keys")
-                with sec_sum_col2:
-                    st.markdown("**Aggregation**")
-                    st.success(f"🛡️ {agg_method.replace('_', ' ').title()}")
-                    st.caption("Byzantine-robust aggregation active")
-                with sec_sum_col3:
-                    st.markdown("**Privacy**")
-                    st.success("🔒 DP Noise Applied")
-                    st.caption("Differential privacy protects individual data")
-                with sec_sum_col4:
-                    st.markdown("**Endpoint**")
-                    st.success("✂️ Gradient Clipping")
-                    st.caption("Limits data leakage from gradients")
-                
-                # --- PER-CLIENT PERFORMANCE ---
-                st.divider()
-                st.subheader("📊 Per-Client Performance")
-                
-                # Create columns for per-client charts
-                chart_cols = st.columns(3)
-                for i, col in enumerate(chart_cols):
-                    with col:
-                        st.markdown(f"**Client {i+1}**")
-                        if i == 0:
-                            st.caption(" CIFAR-10")
-                        elif i == 1:
-                            st.caption("CIFAR-10")
-                        else:
-                            st.caption("MNIST Digits")
-                        
-                        # Loss chart
-                        st.markdown("_Loss Over Rounds_")
-                        st.line_chart(client_losses[i], use_container_width=True)
-                        
-                        # Accuracy chart
-                        st.markdown("_Accuracy Over Rounds_")
-                        st.line_chart(client_accuracies[i], use_container_width=True)
-                        
-                        # Final metrics
-                        final_loss = client_losses[i][-1] if client_losses[i] else 0
-                        final_acc = client_accuracies[i][-1] if client_accuracies[i] else 0
-                        st.metric("Final Loss", f"{final_loss:.4f}")
-                        st.metric("Final Accuracy", f"{final_acc:.2f}%")
-
-                
-                # --- GLOBAL MODEL EVALUATION ---
-                st.divider()
-                st.subheader("🎓 Global Model Evaluation")
-                
-                with st.spinner("Evaluating global model on test set..."):
-                    # Load final global model
-                    eval_model = MultiModalFederatedModel().to(device)
-                    params_dict = zip(eval_model.state_dict().keys(), global_params)
-                    state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-                    eval_model.load_state_dict(state_dict, strict=True)
-                    eval_model.eval()
-                    
-                    # Load test dataset (use CIFAR-10 test set as global metric)
-                    test_dataset = get_client_dataset(0, 1, train=False)
-                    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
-                    
-                    # Evaluation
-                    test_loss = 0.0
-                    correct = 0
-                    total = 0
-                    all_preds = []
-                    all_labels = []
-                    criterion = torch.nn.CrossEntropyLoss()
-                    
-                    with torch.no_grad():
-                        for inputs, labels in test_loader:
-                            inputs, labels = inputs.to(device), labels.to(device)
-                            outputs = eval_model(inputs)
-                            test_loss += criterion(outputs, labels).item()
-                            _, predicted = torch.max(outputs.data, 1)
-                            total += labels.size(0)
-                            correct += (predicted == labels).sum().item()
-                            
-                            all_preds.extend(predicted.cpu().numpy())
-                            all_labels.extend(labels.cpu().numpy())
-                    
-                    test_accuracy = 100 * correct / total
-                    avg_test_loss = test_loss / len(test_loader)
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Test Accuracy", f"{test_accuracy:.2f}%")
-                with col2:
-                    st.metric("Test Loss", f"{avg_test_loss:.4f}")
-                with col3:
-                    st.metric("Test Samples", f"{total:,}")
-                
-                # Confusion Matrix
-                with st.expander("🔍 Confusion Matrix & Per-Class Accuracy", expanded=False):
-                    from sklearn.metrics import confusion_matrix
-                    import matplotlib.pyplot as plt
-                    import seaborn as sns
-                    
-                    cm = confusion_matrix(all_labels, all_preds, labels=range(10))
-                    
-                    fig, ax = plt.subplots(figsize=(10, 8))
-                    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                                xticklabels=CIFAR10_CLASSES, 
-                                yticklabels=CIFAR10_CLASSES, ax=ax)
-                    ax.set_xlabel('Predicted')
-                    ax.set_ylabel('Actual')
-                    ax.set_title('Confusion Matrix')
-                    st.pyplot(fig)
-                    
-                    # Per-class accuracy
-                    st.markdown("**Per-Class Accuracy:**")
-                    for i, class_name in enumerate(CIFAR10_CLASSES):
-                        class_correct = cm[i, i]
-                        class_total = cm[i].sum()
-                        class_acc = 100 * class_correct / class_total if class_total > 0 else 0
-                        st.progress(class_acc / 100, text=f"{class_name}: {class_acc:.1f}% ({class_correct}/{class_total})")
-                
                 
             except Exception as e:
                 st.error(f"❌ Training failed: {str(e)}")
                 st.exception(e)
 
-    else:
-        # Welcome screen
-        st.info("👈 Configure training parameters in the sidebar and click START")
+    if not st.session_state.training_completed:
+        # Welcome screen (only shows before any training)
+        st.info("👈 Configure training settings and click START")
         
-        # Show data distribution
-        st.divider()
-        st.subheader(" Data Distribution")
+        st.subheader("📊 HAM10000 Dataset")
+        st.caption("10,015 dermoscopic images · 7 skin lesion classes · Non-IID split across 3 hospitals")
         
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            st.markdown("**Client 1**")
-            st.caption("airplane, automobile, ship, truck")
-            st.progress(0.33)
-            
+            st.markdown("**🏥 Hospital A**")
+            st.caption("Melanocytic Nevi, Melanoma")
         with col2:
-            st.markdown("**Client 2**")
-            st.caption(" bird, cat, deer, dog, frog, horse")
-            st.progress(0.66)
-            
+            st.markdown("**🏥 Hospital B**")
+            st.caption("Benign Keratosis, Basal Cell Carcinoma, Actinic Keratoses")
         with col3:
-            st.markdown("**Client 3**")
-            st.caption(" handwritten digits (0-9)")
-            st.progress(1.0)
+            st.markdown("**🏥 Hospital C**")
+            st.caption("Vascular Lesions, Dermatofibroma")
         
-        # Show security architecture overview
         st.divider()
-        st.subheader("🛡️ Security Architecture")
+        st.subheader("🔬 Skin Lesion Classes")
+        class_cols = st.columns(4)
+        class_info = [
+            ("akiec", "Actinic Keratoses", "Pre-malignant"),
+            ("bcc", "Basal Cell Carcinoma", "Malignant"),
+            ("bkl", "Benign Keratosis", "Benign"),
+            ("df", "Dermatofibroma", "Benign"),
+            ("mel", "Melanoma", "⚠️ Malignant"),
+            ("nv", "Melanocytic Nevi", "Benign"),
+            ("vasc", "Vascular Lesions", "Benign"),
+        ]
+        for i, (abbrev, name, severity) in enumerate(class_info):
+            with class_cols[i % 4]:
+                st.markdown(f"**{abbrev}** — {name}")
+                st.caption(severity)
         
-        arch_col1, arch_col2, arch_col3 = st.columns(3)
-        with arch_col1:
-            st.markdown("**Layer 1: Communication**")
-            st.markdown("""
-            - 🔐 E91 Quantum Key Distribution
-            - 🔑 Fernet (AES-128) Encryption
-            - 📡 CHSH Entanglement Verification
-            """)
-        with arch_col2:
-            st.markdown("**Layer 2: Aggregation**")
-            st.markdown("""
-            - 🛡️ Trimmed Mean (default)
-            - 🔍 Anomaly Detection
-            - ✂️ Norm Clipping
-            """)
-        with arch_col3:
-            st.markdown("**Layer 3: Endpoint**")
-            st.markdown("""
-            - 🔒 Differential Privacy Noise
-            - ✂️ Gradient Clipping
-            - 🛡️ Per-client CHSH Verification
-            """)
-    
-    # --- PREDICTION SECTION (INDEPENDENT) ---
-    if st.session_state.training_completed and st.session_state.trained_model_params is not None:
         st.divider()
-        st.subheader("🎯 Test the Trained Global Model")
-        st.markdown("Upload an image to see what the trained model predicts!")
+        st.subheader("🛡️ Security Layers")
+        col_a, col_b, col_c = st.columns(3)
+        with col_a:
+            st.markdown("🔐 **Communication**\n- E91 Quantum Keys\n- AES-128 Encryption\n- CHSH Verification")
+        with col_b:
+            st.markdown("🛡️ **Aggregation**\n- Krum + Trimmed Mean\n- Anomaly Detection\n- Norm Clipping")
+        with col_c:
+            st.markdown("🔒 **Endpoint**\n- Differential Privacy\n- Gradient Clipping")
+
+    # =====================================================
+    # PERSISTENT RESULTS SECTION (survives page reruns)
+    # =====================================================
+    if st.session_state.training_completed and st.session_state.training_results is not None:
+        results = st.session_state.training_results
+        
+        # --- TRAINING RESULTS ---
+        st.divider()
+        st.subheader("📊 Training Results")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Final Loss", f"{results['losses_history'][-1]:.4f}")
+        with col2:
+            st.metric("Final Accuracy", f"{results['accuracies_history'][-1]:.2f}%")
+        with col3:
+            st.metric("Time", f"{results['total_time']:.1f}s")
+        
+        # Charts
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown("**Training Loss Over Rounds**")
+            st.line_chart(results['losses_history'], width='stretch')
+        with col_b:
+            st.markdown("**Training Accuracy Over Rounds**")
+            st.line_chart(results['accuracies_history'], width='stretch')
+        
+        # Privacy & Security
+        st.info(f"✓ Quantum keys verified | Privacy budget spent: ε = {results['final_eps']:.2f}")
+        
+        st.divider()
+        st.subheader("🛡️ Security Summary")
+        sec_cols = st.columns(4)
+        with sec_cols[0]:
+            st.success("🔐 E91 Encrypted")
+        with sec_cols[1]:
+            st.success(f"🛡️ {results['agg_method'].replace('_', ' ').title()}")
+        with sec_cols[2]:
+            st.success(f"🔒 (ε={results['final_eps']:.1f}, δ=1e-5)-DP")
+        with sec_cols[3]:
+            st.success("✂️ Gradient Clipping")
+        
+        # --- GLOBAL MODEL EVALUATION ---
+        st.divider()
+        st.subheader("🎓 Global Model Evaluation")
         
         try:
-            # Load model from session state
+            eval_model = MultiModalFederatedModel().to(device)
+            params_dict = zip(eval_model.state_dict().keys(), st.session_state.trained_model_params)
+            state_dict = OrderedDict({k: torch.from_numpy(np.array(v)) for k, v in params_dict})
+            eval_model.load_state_dict(state_dict, strict=True)
+            eval_model.eval()
+            
+            test_dataset = get_full_test_dataset()
+            test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)
+            
+            test_loss = 0.0
+            correct = 0
+            total = 0
+            all_preds = []
+            all_labels = []
+            criterion = torch.nn.CrossEntropyLoss()
+            
+            with torch.no_grad():
+                for inputs, labels in test_loader:
+                    inputs, labels = inputs.to(device), labels.to(device)
+                    outputs = eval_model(inputs)
+                    test_loss += criterion(outputs, labels).item()
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+                    all_preds.extend(predicted.cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
+            
+            test_accuracy = 100 * correct / total
+            avg_test_loss = test_loss / len(test_loader)
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Test Accuracy", f"{test_accuracy:.2f}%")
+            with col2:
+                st.metric("Test Loss", f"{avg_test_loss:.4f}")
+            with col3:
+                st.metric("Test Samples", f"{total:,}")
+            
+            # Confusion Matrix
+            with st.expander("🔍 Confusion Matrix & Per-Class Accuracy", expanded=False):
+                from sklearn.metrics import confusion_matrix
+                import matplotlib.pyplot as plt
+                import seaborn as sns
+                
+                cm = confusion_matrix(all_labels, all_preds, labels=range(NUM_CLASSES))
+                
+                fig, ax = plt.subplots(figsize=(10, 8))
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                            xticklabels=CLASS_NAMES,
+                            yticklabels=CLASS_NAMES, ax=ax)
+                ax.set_xlabel('Predicted')
+                ax.set_ylabel('Actual')
+                ax.set_title('Skin Lesion Classification — Confusion Matrix')
+                st.pyplot(fig)
+                
+                st.markdown("**Per-Class Accuracy:**")
+                for i, class_name in enumerate(CLASS_NAMES):
+                    display_name = CLASS_DISPLAY[class_name]
+                    class_correct = cm[i, i]
+                    class_total = cm[i].sum()
+                    class_acc = 100 * class_correct / class_total if class_total > 0 else 0
+                    st.progress(class_acc / 100, text=f"{display_name} ({class_name}): {class_acc:.1f}% ({class_correct}/{class_total})")
+        
+        except Exception as e:
+            st.error(f"❌ Evaluation failed: {str(e)}")
+        
+        # --- PREDICTION SECTION ---
+        st.divider()
+        st.subheader("🔬 Test Prediction — Skin Lesion")
+        
+        try:
             prediction_model = MultiModalFederatedModel().to(device)
             params_dict = zip(prediction_model.state_dict().keys(), st.session_state.trained_model_params)
-            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            state_dict = OrderedDict({k: torch.from_numpy(np.array(v)) for k, v in params_dict})
             prediction_model.load_state_dict(state_dict, strict=True)
             prediction_model.eval()
             
-            st.info("💡 **Tip:** Upload any image and the model will classify it into one of the 10 CIFAR-10 classes. For best results, use images of: airplane, automobile, bird, cat, deer, dog, frog, horse, ship, or truck.")
-            
-            uploaded_file = st.file_uploader("Choose an image", type=['png', 'jpg', 'jpeg', 'bmp', 'webp'], key="prediction_uploader")
+            uploaded_file = st.file_uploader("Upload a dermoscopic skin lesion image", type=['png', 'jpg', 'jpeg', 'bmp', 'webp'], key="prediction_uploader")
             
             if uploaded_file is not None:
                 try:
@@ -936,23 +920,15 @@ def main():
                     
                     col_a, col_b = st.columns([1, 2])
                     
-                    with col_a:
-                        st.image(image, caption=f"Uploaded Image\n{image.size[0]}x{image.size[1]} pixels", width=200)
-                        
-                        with st.expander(" Preprocessing Steps"):
-                            st.write(f"1. Original size: {image.size[0]}x{image.size[1]}")
-                            st.write("2. Resize to: 32x32")
-                            st.write("3. Convert to tensor")
-                            st.write("4. Normalize with CIFAR-10 statistics:")
-                            st.code("Mean: [0.4914, 0.4822, 0.4465] (RGB)\nStd:  [0.2023, 0.1994, 0.2010] (RGB)", language="python")
-                    
                     try:
                         transform = transforms.Compose([
-                            transforms.Resize((32, 32)),
+                            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
                             transforms.ToTensor(),
-                            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+                            transforms.Normalize(
+                                mean=[0.7635, 0.5461, 0.5705],
+                                std=[0.1409, 0.1520, 0.1695]
+                            )
                         ])
-                        
                         img_tensor = transform(image).unsqueeze(0).to(device)
                     except Exception as e:
                         st.error(f"❌ Error preprocessing image: {str(e)}")
@@ -968,34 +944,189 @@ def main():
                         st.error(f"❌ Error during prediction: {str(e)}")
                         st.stop()
                     
+                    predicted_class = CLASS_NAMES[predicted_idx]
+                    predicted_display = CLASS_DISPLAY[predicted_class]
+                    
+                    # Medical info for each skin lesion type
+                    LESION_INFO = {
+                        'akiec': {
+                            'severity': '⚡ Pre-Malignant',
+                            'danger': 'moderate',
+                            'intro': 'Actinic Keratoses are rough, scaly patches caused by years of sun exposure — they can progress to squamous cell carcinoma if untreated.',
+                            'precaution': (
+                                "**🩺 What to do:**\n"
+                                "- Schedule a dermatologist appointment within 2 weeks\n"
+                                "- Apply broad-spectrum **SPF 50+** sunscreen every 2 hours when outdoors\n"
+                                "- Avoid direct sun exposure between **10 AM – 4 PM**\n"
+                                "- Wear wide-brimmed hats and UV-protective clothing\n"
+                                "- Do **not** scratch, pick, or try to remove the lesion yourself\n"
+                                "- Get full-body skin exams every **6–12 months**\n"
+                                "- Treatment options include cryotherapy, topical creams (5-FU, Imiquimod), or photodynamic therapy"
+                            )
+                        },
+                        'bcc': {
+                            'severity': '🔴 Malignant',
+                            'danger': 'high',
+                            'intro': 'Basal Cell Carcinoma is the most common form of skin cancer — it rarely spreads but can cause significant local tissue damage if ignored.',
+                            'precaution': (
+                                "**⚠️ Action required:**\n"
+                                "- **See a dermatologist as soon as possible** — early removal is highly curable\n"
+                                "- Do **not** ignore slow-growing sores that don't heal\n"
+                                "- Avoid tanning beds and prolonged sun exposure completely\n"
+                                "- Apply **SPF 50+** daily, even on cloudy days\n"
+                                "- Perform monthly self-exams — look for pearly bumps, pink patches, or open sores\n"
+                                "- Treatment: surgical excision, Mohs surgery, or radiation therapy\n"
+                                "- After treatment, follow-up skin exams every **3–6 months** for 5 years"
+                            )
+                        },
+                        'bkl': {
+                            'severity': '✅ Benign',
+                            'danger': 'low',
+                            'intro': 'Benign Keratosis (seborrheic keratosis) is a harmless, non-cancerous skin growth that commonly appears with aging.',
+                            'precaution': (
+                                "**ℹ️ General care:**\n"
+                                "- No medical treatment is necessary in most cases\n"
+                                "- Monitor the lesion — consult a doctor if it **changes color, shape, or size**\n"
+                                "- See a doctor if it becomes **irritated, bleeds, or itches** persistently\n"
+                                "- Cosmetic removal is available via cryotherapy or curettage if desired\n"
+                                "- Apply sunscreen regularly to prevent new growths\n"
+                                "- Annual skin check-ups are a good practice"
+                            )
+                        },
+                        'df': {
+                            'severity': '✅ Benign',
+                            'danger': 'low',
+                            'intro': 'Dermatofibroma is a common, harmless firm bump in the skin, often on the legs — usually a reaction to a minor injury like an insect bite.',
+                            'precaution': (
+                                "**ℹ️ General care:**\n"
+                                "- No treatment required unless it causes discomfort\n"
+                                "- See a doctor if it **grows rapidly, changes color, or becomes painful**\n"
+                                "- Surgical removal is an option if the bump is bothersome or cosmetically undesirable\n"
+                                "- Avoid picking or scratching the area\n"
+                                "- These bumps are permanent but harmless — they rarely recur after removal"
+                            )
+                        },
+                        'mel': {
+                            'severity': '🔴 Malignant — Dangerous',
+                            'danger': 'critical',
+                            'intro': 'Melanoma is the most dangerous form of skin cancer — it can spread rapidly to other organs if not caught early. Early detection is life-saving.',
+                            'precaution': (
+                                "**🚨 URGENT — Seek immediate medical attention:**\n"
+                                "- **See a dermatologist IMMEDIATELY** — do NOT wait\n"
+                                "- Follow the **ABCDE rule**: Asymmetry, Border irregularity, Color variation, Diameter >6mm, Evolving shape\n"
+                                "- A biopsy is essential for definitive diagnosis\n"
+                                "- Avoid all UV exposure — no tanning beds, use **SPF 50+** at all times\n"
+                                "- Perform **monthly full-body self-exams** using a mirror\n"
+                                "- Treatment may include surgery, immunotherapy, targeted therapy, or radiation\n"
+                                "- After diagnosis, follow-up exams every **3 months** for the first 2 years\n"
+                                "- Inform family members — melanoma can have a genetic component"
+                            )
+                        },
+                        'nv': {
+                            'severity': '✅ Benign',
+                            'danger': 'low',
+                            'intro': 'Melanocytic Nevi (moles) are common benign growths — most people have 10-40 moles, and the vast majority are completely harmless.',
+                            'precaution': (
+                                "**ℹ️ General care:**\n"
+                                "- Monitor moles regularly using the **ABCDE rule** (Asymmetry, Border, Color, Diameter, Evolving)\n"
+                                "- Annual skin check-ups with a dermatologist are recommended\n"
+                                "- See a doctor if any mole **changes shape, color, bleeds, or itches**\n"
+                                "- Use sunscreen to prevent new moles and protect existing ones\n"
+                                "- Avoid picking or irritating moles\n"
+                                "- People with many moles (>50) should have more frequent check-ups"
+                            )
+                        },
+                        'vasc': {
+                            'severity': '✅ Benign',
+                            'danger': 'low',
+                            'intro': 'Vascular Lesions (e.g., cherry angiomas, hemangiomas) are benign growths of blood vessels in the skin — they are almost always harmless.',
+                            'precaution': (
+                                "**ℹ️ General care:**\n"
+                                "- Usually no treatment is needed — most vascular lesions are harmless\n"
+                                "- Consult a doctor if it **bleeds frequently, grows rapidly, or changes appearance**\n"
+                                "- Cosmetic removal via laser therapy or electrocautery is available if desired\n"
+                                "- Avoid trauma to the area to prevent bleeding\n"
+                                "- These are common and increase in number with age"
+                            )
+                        },
+                    }
+                    
+                    info = LESION_INFO.get(predicted_class, {})
+                    
+                    # Left column: Image + All Probabilities dropdown
+                    with col_a:
+                        st.image(image, caption=f"Uploaded: {image.size[0]}×{image.size[1]}", width=200)
+                        
+                        with st.expander("📊 All Class Probabilities", expanded=False):
+                            probs_sorted, idx_sorted = torch.sort(probabilities, descending=True)
+                            for i in range(NUM_CLASSES):
+                                class_idx = idx_sorted[i].item()
+                                class_prob = probs_sorted[i].item()
+                                cls_name = CLASS_NAMES[class_idx]
+                                display = CLASS_DISPLAY[cls_name]
+                                cls_info = LESION_INFO.get(cls_name, {})
+                                severity_tag = cls_info.get('severity', '')
+                                marker = " 👈" if cls_name == predicted_class else ""
+                                st.progress(class_prob, text=f"{display} ({cls_name}): {class_prob*100:.2f}%{marker}")
+                                st.caption(f"{severity_tag}")
+                    
+                    # Right column: Diagnosis + Confidence + Severity
                     with col_b:
-                        if confidence > 0.6:
-                            st.success(f"### Prediction: **{CIFAR10_CLASSES[predicted_idx].upper()}**")
-                        elif confidence > 0.3:
-                            st.warning(f"### Prediction: **{CIFAR10_CLASSES[predicted_idx].upper()}**")
+                        # Diagnosis header
+                        if info.get('danger') == 'critical':
+                            if confidence > 0.5:
+                                st.error(f"### 🚨 {predicted_display} ({predicted_class})")
+                            else:
+                                st.warning(f"### 🚨 {predicted_display} ({predicted_class}) — Low Confidence")
+                        elif info.get('danger') == 'high':
+                            if confidence > 0.5:
+                                st.error(f"### ⚠️ {predicted_display} ({predicted_class})")
+                            else:
+                                st.warning(f"### ⚠️ {predicted_display} ({predicted_class}) — Low Confidence")
+                        elif info.get('danger') == 'moderate':
+                            if confidence > 0.5:
+                                st.warning(f"### ⚡ {predicted_display} ({predicted_class})")
+                            else:
+                                st.info(f"### ⚡ {predicted_display} ({predicted_class}) — Low Confidence")
                         else:
-                            st.info(f"### Prediction: **{CIFAR10_CLASSES[predicted_idx].upper()}** (Low Confidence)")
+                            if confidence > 0.5:
+                                st.success(f"### ✅ {predicted_display} ({predicted_class})")
+                            else:
+                                st.info(f"### {predicted_display} ({predicted_class}) — Low Confidence")
                         
                         st.metric("Confidence", f"{confidence*100:.1f}%")
                         
-                        st.markdown("**All Class Probabilities:**")
-                        probs_sorted, idx_sorted = torch.sort(probabilities, descending=True)
-                        for i in range(10):
-                            class_idx = idx_sorted[i].item()
-                            class_prob = probs_sorted[i].item()
-                            st.progress(class_prob, text=f"{CIFAR10_CLASSES[class_idx]}: {class_prob*100:.2f}%")
+                        # Severity display under confidence
+                        severity_text = info.get('severity', 'Unknown')
+                        danger_level = info.get('danger', 'low')
+                        if danger_level == 'critical':
+                            st.error(f"**Severity:** {severity_text}")
+                        elif danger_level == 'high':
+                            st.warning(f"**Severity:** {severity_text}")
+                        elif danger_level == 'moderate':
+                            st.warning(f"**Severity:** {severity_text}")
+                        else:
+                            st.success(f"**Severity:** {severity_text}")
+                        
+                        # One-line intro
+                        st.info(f"📋 {info.get('intro', 'No information available.')}")
+                    
+                    # --- Precautions Below (full width) ---
+                    st.divider()
+                    st.markdown(f"### 🩺 Recommended Precautions for {predicted_display}")
+                    if info.get('danger') in ['critical', 'high']:
+                        st.error(info.get('precaution', 'Consult a dermatologist.'))
+                    elif info.get('danger') == 'moderate':
+                        st.warning(info.get('precaution', 'Consult a dermatologist.'))
+                    else:
+                        st.success(info.get('precaution', 'Monitor and consult if changes occur.'))
                 
                 except Exception as e:
                     st.error(f"❌ Unexpected error during prediction: {str(e)}")
                     st.exception(e)
-            
-            st.divider()
-            st.markdown("**💡 Don't have an image? Try these examples:**")
-            st.caption("Search for sample images of: airplane, automobile, bird, cat, deer, dog, frog, horse, ship, or truck")
-            
+        
         except Exception as e:
             st.error(f"❌ Error loading model for prediction: {str(e)}")
-            st.info("Please train the model first before making predictions.")
 
 if __name__ == "__main__":
     main()

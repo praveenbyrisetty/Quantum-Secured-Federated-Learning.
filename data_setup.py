@@ -1,25 +1,257 @@
+"""
+FLQC Data Setup - HAM10000 Skin Lesion Dataset
+
+WHAT THIS FILE DOES:
+Loads the HAM10000 dermoscopic skin lesion dataset and partitions it
+across 3 federated learning clients (simulating different hospitals).
+
+DATASET: HAM10000 — 10,015 images, 7 classes:
+  - nv:    Melanocytic Nevi (benign moles)
+  - mel:   Melanoma (malignant)
+  - bkl:   Benign Keratosis
+  - bcc:   Basal Cell Carcinoma (malignant)
+  - akiec: Actinic Keratoses (pre-malignant)
+  - vasc:  Vascular Lesions
+  - df:    Dermatofibroma
+
+CLIENT PARTITIONING (non-IID, simulating hospital specialization):
+  - Client 0 (Hospital A): nv, mel   — Melanocytic focus
+  - Client 1 (Hospital B): bkl, bcc, akiec — Keratosis & Carcinoma
+  - Client 2 (Hospital C): vasc, df  — Vascular & Fibroma
+
+SETUP:
+  Download HAM10000 from Kaggle and place in ./data/HAM10000/:
+  https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000
+
+  Expected structure after setup:
+  ./data/HAM10000/
+      HAM10000_metadata.csv
+      HAM10000_images_part_1/
+      HAM10000_images_part_2/
+"""
+
 import torch
-from torch.utils.data import DataLoader, Dataset, Subset
-import torchvision
+from torch.utils.data import DataLoader, Dataset, Subset, random_split
 import torchvision.transforms as transforms
 import numpy as np
+import pandas as pd
 import os
+import glob
+import shutil
+from PIL import Image
 
 # ==========================================
-# 1. CLASS-BASED CIFAR-10 PARTITIONING FOR HETEROGENEOUS FL
+# CONFIGURATION
 # ==========================================
-def get_partitioned_cifar10(client_id, total_clients=3, train=True):
+HAM10000_DIR = os.path.join('.', 'data', 'HAM10000')
+ORGANIZED_DIR = os.path.join('.', 'data', 'HAM10000_organized')
+IMAGE_SIZE = 128  # Resize dermoscopy images to 128x128 (balance speed vs quality)
+
+# 7 HAM10000 classes
+CLASS_NAMES = ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
+CLASS_TO_IDX = {name: idx for idx, name in enumerate(CLASS_NAMES)}
+
+# Friendly display names
+CLASS_DISPLAY = {
+    'akiec': 'Actinic Keratoses',
+    'bcc':   'Basal Cell Carcinoma',
+    'bkl':   'Benign Keratosis',
+    'df':    'Dermatofibroma',
+    'mel':   'Melanoma',
+    'nv':    'Melanocytic Nevi',
+    'vasc':  'Vascular Lesions',
+}
+
+# Client class assignments (non-IID partitioning)
+CLIENT_CLASSES = {
+    0: ['nv', 'mel'],           # Hospital A: Melanocytic focus
+    1: ['bkl', 'bcc', 'akiec'], # Hospital B: Keratosis & Carcinoma
+    2: ['vasc', 'df'],          # Hospital C: Vascular & Fibroma
+}
+
+
+# ==========================================
+# 1. ORGANIZE DATASET INTO CLASS FOLDERS
+# ==========================================
+def organize_ham10000():
     """
-    Get class-based partitions of CIFAR-10 for heterogeneous FL.
+    Read metadata CSV and copy images into class-specific folders.
+    Creates: ./data/HAM10000_organized/<class_name>/<image>.jpg
     
-    CIFAR-10 Classes:
-    0: airplane, 1: automobile, 2: bird, 3: cat, 4: deer,
-    5: dog, 6: frog, 7: horse, 8: ship, 9: truck
+    This only needs to run once. Subsequent calls skip if already done.
+    """
+    if os.path.exists(ORGANIZED_DIR) and len(os.listdir(ORGANIZED_DIR)) >= 7:
+        return True  # Already organized
     
-    Distribution:
-    - Client 0 (displayed as Client 1): Non-living things (airplane, automobile, ship, truck)
-    - Client 1 (displayed as Client 2): Living things (bird, cat, deer, dog, frog, horse)
-    - Client 2 (displayed as Client 3): MNIST (handled by get_client_dataset)
+    # Find metadata CSV
+    csv_path = None
+    for candidate in [
+        os.path.join(HAM10000_DIR, 'HAM10000_metadata.csv'),
+        os.path.join(HAM10000_DIR, 'HAM10000_metadata'),
+        os.path.join(HAM10000_DIR, 'hmnist_28_28_RGB.csv'),
+    ]:
+        if os.path.exists(candidate):
+            csv_path = candidate
+            break
+    
+    # Also search recursively
+    if csv_path is None:
+        for root, dirs, files in os.walk(HAM10000_DIR):
+            for f in files:
+                if 'metadata' in f.lower() and f.endswith('.csv'):
+                    csv_path = os.path.join(root, f)
+                    break
+            if csv_path:
+                break
+    
+    if csv_path is None:
+        print(f"ERROR: Cannot find HAM10000_metadata.csv in {HAM10000_DIR}")
+        print("Please download the HAM10000 dataset from:")
+        print("https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000")
+        print(f"And place it in: {os.path.abspath(HAM10000_DIR)}")
+        return False
+    
+    print(f"Found metadata: {csv_path}")
+    df = pd.read_csv(csv_path)
+    
+    # Find all image files
+    image_dirs = []
+    for root, dirs, files in os.walk(HAM10000_DIR):
+        for f in files:
+            if f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                image_dirs.append(root)
+                break
+    
+    if not image_dirs:
+        print(f"ERROR: No images found in {HAM10000_DIR}")
+        return False
+    
+    # Build image path lookup
+    image_paths = {}
+    for img_dir in image_dirs:
+        for f in os.listdir(img_dir):
+            if f.lower().endswith(('.jpg', '.jpeg', '.png')):
+                name = os.path.splitext(f)[0]
+                image_paths[name] = os.path.join(img_dir, f)
+    
+    print(f"Found {len(image_paths)} images")
+    
+    # Create class folders and copy images
+    os.makedirs(ORGANIZED_DIR, exist_ok=True)
+    for class_name in CLASS_NAMES:
+        os.makedirs(os.path.join(ORGANIZED_DIR, class_name), exist_ok=True)
+    
+    copied = 0
+    for _, row in df.iterrows():
+        image_id = row['image_id']
+        dx = row['dx']  # diagnosis class
+        
+        if dx not in CLASS_NAMES:
+            continue
+        
+        if image_id in image_paths:
+            src = image_paths[image_id]
+            ext = os.path.splitext(src)[1]
+            dst = os.path.join(ORGANIZED_DIR, dx, f"{image_id}{ext}")
+            if not os.path.exists(dst):
+                shutil.copy2(src, dst)
+            copied += 1
+    
+    print(f"Organized {copied} images into {len(CLASS_NAMES)} class folders")
+    return True
+
+
+# ==========================================
+# 2. CUSTOM DATASET CLASS
+# ==========================================
+class HAM10000Dataset(Dataset):
+    """
+    HAM10000 Skin Lesion Dataset.
+    
+    Loads images from organized class folders and applies transforms.
+    Supports filtering to specific classes for FL client partitioning.
+    """
+    
+    def __init__(self, root_dir, transform=None, selected_classes=None):
+        """
+        Args:
+            root_dir: Path to organized dataset (HAM10000_organized/)
+            transform: Image transforms to apply
+            selected_classes: List of class names to include (None = all)
+        """
+        self.root_dir = root_dir
+        self.transform = transform
+        self.samples = []  # List of (image_path, label_idx)
+        
+        classes = selected_classes if selected_classes else CLASS_NAMES
+        
+        for class_name in classes:
+            class_dir = os.path.join(root_dir, class_name)
+            if not os.path.exists(class_dir):
+                continue
+            
+            label_idx = CLASS_TO_IDX[class_name]
+            for img_file in os.listdir(class_dir):
+                if img_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                    self.samples.append((
+                        os.path.join(class_dir, img_file),
+                        label_idx
+                    ))
+        
+        # Shuffle for good measure
+        np.random.seed(42)
+        np.random.shuffle(self.samples)
+    
+    def __len__(self):
+        return len(self.samples)
+    
+    def __getitem__(self, idx):
+        img_path, label = self.samples[idx]
+        image = Image.open(img_path).convert('RGB')
+        
+        if self.transform:
+            image = self.transform(image)
+        
+        return image, label
+
+
+# ==========================================
+# 3. DATA LOADING FUNCTIONS
+# ==========================================
+
+def get_transforms(train=True):
+    """Get image transforms for HAM10000 dermoscopic images."""
+    if train:
+        return transforms.Compose([
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            transforms.RandomRotation(20),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.7635, 0.5461, 0.5705],  # HAM10000-specific means
+                std=[0.1409, 0.1520, 0.1695]     # HAM10000-specific stds
+            )
+        ])
+    else:
+        return transforms.Compose([
+            transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.7635, 0.5461, 0.5705],
+                std=[0.1409, 0.1520, 0.1695]
+            )
+        ])
+
+
+def get_client_dataset(client_id, total_clients=3, train=True):
+    """
+    Get dataset for each client based on non-IID class partitioning.
+    
+    - Client 0 (Hospital A): nv, mel — Melanocytic focus
+    - Client 1 (Hospital B): bkl, bcc, akiec — Keratosis & Carcinoma
+    - Client 2 (Hospital C): vasc, df — Vascular & Fibroma
     
     Args:
         client_id: Integer ID of the client (0, 1, 2)
@@ -29,151 +261,69 @@ def get_partitioned_cifar10(client_id, total_clients=3, train=True):
     Returns:
         Dataset partition for this client
     """
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-    ])
+    # Organize dataset if not already done
+    if not organize_ham10000():
+        raise FileNotFoundError(
+            f"HAM10000 dataset not found in {HAM10000_DIR}. "
+            "Download from: https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000"
+        )
     
-    # Download full CIFAR-10
-    full_dataset = torchvision.datasets.CIFAR10(
-        root='./data', 
-        train=train, 
-        download=True, 
-        transform=transform
+    # Get this client's assigned classes
+    selected_classes = CLIENT_CLASSES.get(client_id, CLASS_NAMES)
+    
+    # Load full dataset for this client's classes
+    transform = get_transforms(train=train)
+    full_dataset = HAM10000Dataset(
+        root_dir=ORGANIZED_DIR,
+        transform=transform,
+        selected_classes=selected_classes
     )
     
-    # Define class assignments for each client
-    if client_id == 0:
-        # Client 0 (Client 1 in UI): Non-living things
-        selected_classes = [0, 1, 8, 9]  # airplane, automobile, ship, truck
-    elif client_id == 1:
-        # Client 1 (Client 2 in UI): All living things
-        selected_classes = [2, 3, 4, 5, 6, 7]  # bird, cat, deer, dog, frog, horse
-    else:
-        # Client 2 and beyond: will use MNIST (not CIFAR-10)
-        # This is a fallback that shouldn't be used
-        selected_classes = []
+    if len(full_dataset) == 0:
+        raise ValueError(
+            f"No images found for Client {client_id} "
+            f"(classes: {selected_classes}). "
+            f"Check that {ORGANIZED_DIR} contains the class folders."
+        )
     
-    # Filter dataset to only include selected classes
-    indices = [i for i, (_, label) in enumerate(full_dataset) if label in selected_classes]
-    partition = Subset(full_dataset, indices)
+    # 80/20 train/test split
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
     
-    return partition
+    generator = torch.Generator().manual_seed(42)
+    train_set, test_set = random_split(full_dataset, [train_size, test_size], generator=generator)
+    
+    return train_set if train else test_set
 
 
-def get_mnist_as_cifar_format(train=True):
+def get_full_test_dataset():
     """
-    Load MNIST and preprocess to match CIFAR-10 format (32x32 RGB).
-    Converts grayscale 28x28 digits to 32x32 RGB to work with CIFAR-10 model.
-    
-    Args:
-        train: Whether to use training set (True) or test set (False)
-    
-    Returns:
-        MNIST dataset with CIFAR-10 compatible preprocessing
+    Get the full test set across ALL classes (for global model evaluation).
+    Returns a dataset with all 7 classes.
     """
-    transform = transforms.Compose([
-        transforms.Pad(2),  # 28x28 → 32x32 by adding 2px padding on each side
-        transforms.ToTensor(),
-        transforms.Lambda(lambda x: x.repeat(3, 1, 1)),  # Grayscale → RGB (replicate channel)
-        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
-    ])
+    if not organize_ham10000():
+        raise FileNotFoundError("HAM10000 dataset not found.")
     
-    return torchvision.datasets.MNIST(
-        root='./data',
-        train=train,
-        download=True,
-        transform=transform
+    transform = get_transforms(train=False)
+    full_dataset = HAM10000Dataset(
+        root_dir=ORGANIZED_DIR,
+        transform=transform,
+        selected_classes=None  # All classes
     )
-
-
-def get_client_dataset(client_id, total_clients=3, train=True):
-    """
-    Get dataset for each client based on heterogeneous FL setup.
     
-    - Client 0 (displayed as Client 1): CIFAR-10 Non-living (airplane, automobile, ship, truck)
-    - Client 1 (displayed as Client 2): CIFAR-10 Living (bird, cat, deer, dog, frog, horse)
-    - Client 2 (displayed as Client 3): MNIST Digits (0-9)
+    # Use 20% as test
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
     
-    Args:
-        client_id: Integer ID of the client (0, 1, 2)
-        total_clients: Total number of clients
-        train: Whether to use training set (True) or test set (False)
+    generator = torch.Generator().manual_seed(42)
+    _, test_set = random_split(full_dataset, [train_size, test_size], generator=generator)
     
-    Returns:
-        Dataset for this client
-    """
-    if client_id == 2:
-        # Client 2 (Client 3 in UI): MNIST digits
-        return get_mnist_as_cifar_format(train=train)
-    else:
-        # Client 0 & 1: CIFAR-10 partitions
-        return get_partitioned_cifar10(client_id, total_clients, train=train)
+    return test_set
 
 
-def get_image_dataset(path='./data/images'):
-    """Legacy function - now defaults to CIFAR-10"""
-    transform = transforms.Compose([
-        transforms.Resize((32, 32)),
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
-
-    # Explicit trigger for CIFAR-10
-    if path == 'CIFAR10':
-        pass # Skip to fallback
-    elif os.path.exists(path) and os.path.isdir(path) and len(os.listdir(path)) > 0:
-        try:
-            full_data = torchvision.datasets.ImageFolder(root=path, transform=transform)
-            return full_data
-        except:
-            pass
-            
-    # Default Fallback: CIFAR-10 full (10 classes)
-    full_data = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-    return full_data
-
-# ==========================================
-# 2. TEXT DATASET (Security Logs)
-# ==========================================
-class TextDataset(Dataset):
-    def __init__(self, size=1000, path='./data/test.txt'):
-         self.data = []
-         self.labels = []
-         self.raw_data = []
-         
-         # Try loading real
-         if os.path.exists(path):
-             try:
-                 with open(path, 'r') as f: lines = f.readlines()
-                 for _ in range(size):
-                     line = lines[np.random.randint(0, len(lines))]
-                     self.raw_data.append(line.strip())
-                     # Hash words to IDs
-                     words = line.split()
-                     ids = [hash(w) % 5000 for w in words[:20]]
-                     if len(ids) < 20: ids += [0]*(20-len(ids))
-                     self.data.append(torch.tensor(ids).long())
-                     self.labels.append(1 if "error" in line else 0)
-             except: pass
-             
-         # Fallback Synthetic
-         if not self.data:
-             for k in range(size):
-                 from random import randint
-                 self.raw_data.append(f"Synthetic Log Entry {k}: System check {randint(100,999)}")
-                 self.data.append(torch.randint(0, 5000, (20,)))
-                 self.labels.append(torch.randint(0, 2, (1,)).item())
-        
-         self.labels = torch.tensor(self.labels).long()
-
-    def __len__(self): return len(self.data)
-    def __getitem__(self, i): return self.data[i], self.labels[i]
-    def get_raw(self, i): return self.raw_data[i]
-
-#Helpers
+# Helper for dynamic loading
 def get_dynamic_loader(dataset, round_num, chunk_size=1000, batch_size=32):
     total = len(dataset)
-    start = (round_num-1)*chunk_size % total
-    end = min(start+chunk_size, total)
+    start = (round_num - 1) * chunk_size % total
+    end = min(start + chunk_size, total)
     return DataLoader(Subset(dataset, range(start, end)), batch_size=batch_size, shuffle=True)
