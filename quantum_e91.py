@@ -13,9 +13,11 @@ due to shot noise), making the simulation realistic.
 """
 
 import hashlib
+import hmac
 import base64
 import logging
-import pickle
+import io
+import struct
 import math
 import random
 import numpy as np
@@ -137,6 +139,9 @@ def generate_key(length: int = 128) -> bytes:
     
     Creates entangled Bell pairs using Qiskit circuits, measures them,
     and derives a Fernet-compatible AES key from the measurement results.
+    
+    SECURITY FIX: No longer silently falls back to classical key.
+    If quantum generation fails, raises an error so the caller knows.
     """
     try:
         key_bits = []
@@ -160,8 +165,10 @@ def generate_key(length: int = 128) -> bytes:
     
     except Exception as e:
         logger.error(f"Quantum key generation failed: {e}")
-        # Fallback for demo stability
-        return Fernet.generate_key()
+        raise RuntimeError(
+            f"Quantum key generation failed — refusing to fall back to classical key. "
+            f"Original error: {e}"
+        )
 
 # ==========================================
 # 3. ENTANGLEMENT VERIFICATION (CHSH)
@@ -202,7 +209,7 @@ def encrypt_data(data: Any) -> Tuple[bytes, bytes]:
     try:
         key = generate_key()
         f = Fernet(key)
-        serialized = pickle.dumps(data)
+        serialized = _safe_serialize_params(data) if isinstance(data, list) else str(data).encode()
         encrypted = f.encrypt(serialized)
         return encrypted, key
     except Exception as e:
@@ -214,46 +221,126 @@ def decrypt_data(encrypted_data: bytes, key: bytes) -> Any:
     try:
         f = Fernet(key)
         decrypted = f.decrypt(encrypted_data)
-        return pickle.loads(decrypted)
+        return _safe_deserialize_params(decrypted)
     except Exception as e:
         logger.error(f"Decryption failed: {e}")
         raise
 
 
 # ==========================================
-# 5. MODEL PARAMETER ENCRYPTION/DECRYPTION
+# 5. SAFE SERIALIZATION (NO PICKLE)
 # ==========================================
-#  In FL, clients send model weights to the server.
+# SECURITY FIX: Replaced pickle.dumps/loads with numpy-based serialization.
+# pickle.loads can execute arbitrary code if a malicious payload is crafted.
+# This safe serializer only handles numpy arrays — no code execution possible.
+
+def _safe_serialize_params(params: list) -> bytes:
+    """
+    Safely serialize model parameters WITHOUT pickle.
+    
+    Format: [num_arrays (4 bytes)] + for each array:
+        [ndim (4 bytes)] + [shape (ndim × 4 bytes)] + [dtype_len (4 bytes)] + [dtype_str] + [data_bytes]
+    """
+    buf = io.BytesIO()
+    buf.write(struct.pack('<I', len(params)))  # number of arrays
+    
+    for arr in params:
+        arr = np.ascontiguousarray(arr)
+        # Write dimensions
+        buf.write(struct.pack('<I', arr.ndim))
+        for dim in arr.shape:
+            buf.write(struct.pack('<I', dim))
+        # Write dtype as string
+        dtype_str = str(arr.dtype).encode('utf-8')
+        buf.write(struct.pack('<I', len(dtype_str)))
+        buf.write(dtype_str)
+        # Write raw data
+        data = arr.tobytes()
+        buf.write(struct.pack('<Q', len(data)))  # 8 bytes for data length
+        buf.write(data)
+    
+    return buf.getvalue()
+
+
+def _safe_deserialize_params(data: bytes) -> list:
+    """
+    Safely deserialize model parameters WITHOUT pickle.
+    Only reconstructs numpy arrays — no arbitrary code execution.
+    """
+    buf = io.BytesIO(data)
+    num_arrays = struct.unpack('<I', buf.read(4))[0]
+    
+    if num_arrays > 10000:  # Sanity check
+        raise ValueError(f"Suspicious number of arrays: {num_arrays}")
+    
+    params = []
+    for _ in range(num_arrays):
+        ndim = struct.unpack('<I', buf.read(4))[0]
+        if ndim > 10:  # Sanity check
+            raise ValueError(f"Suspicious number of dimensions: {ndim}")
+        shape = tuple(struct.unpack('<I', buf.read(4))[0] for _ in range(ndim))
+        dtype_len = struct.unpack('<I', buf.read(4))[0]
+        if dtype_len > 50:  # Sanity check
+            raise ValueError(f"Suspicious dtype length: {dtype_len}")
+        dtype_str = buf.read(dtype_len).decode('utf-8')
+        data_len = struct.unpack('<Q', buf.read(8))[0]
+        raw_data = buf.read(data_len)
+        
+        arr = np.frombuffer(raw_data, dtype=np.dtype(dtype_str)).reshape(shape).copy()
+        params.append(arr)
+    
+    return params
+
+
+# ==========================================
+# 6. MODEL PARAMETER ENCRYPTION/DECRYPTION
+# ==========================================
+# In FL, clients send model weights to the server.
 # Without encryption, anyone intercepting the network traffic can see the weights.
 # These functions encrypt the weights using a quantum-generated key so that
 # even if someone intercepts the data, they can't read it.
+#
+# SECURITY FIX: Now uses safe numpy serialization instead of pickle,
+# and adds HMAC integrity verification to detect tampering.
+
+def _compute_hmac(key: bytes, data: bytes) -> bytes:
+    """Compute HMAC-SHA256 for integrity verification."""
+    # Derive an HMAC key from the Fernet key to avoid key reuse
+    hmac_key = hashlib.sha256(b"hmac-integrity-" + key).digest()
+    return hmac.new(hmac_key, data, hashlib.sha256).digest()
+
 
 def encrypt_parameters(params: list, key: bytes = None) -> Tuple[bytes, bytes]:
     """
     Encrypt model parameters (list of numpy arrays) for secure transmission.
     
     HOW IT WORKS:
-    1. Takes the list of numpy arrays (model weights) 
-    2. Serializes them with pickle (converts to bytes)
+    1. Takes the list of numpy arrays (model weights)
+    2. Serializes them safely with numpy (NO pickle — prevents code execution)
     3. Encrypts the bytes using Fernet (AES-128 encryption) with a quantum key
-    4. Returns the encrypted blob + the key needed to decrypt
+    4. Adds HMAC integrity tag to detect tampering
+    5. Returns the encrypted blob + the key needed to decrypt
     
     Args:
         params: List of numpy arrays (model weights from PyTorch)
         key: Optional pre-generated quantum key. If None, generates a new one.
     
     Returns:
-        Tuple of (encrypted_bytes, fernet_key)
+        Tuple of (encrypted_bytes_with_hmac, fernet_key)
     """
     try:
         if key is None:
             key = generate_key(128)
         
-        serialized = pickle.dumps(params)
+        serialized = _safe_serialize_params(params)
         f = Fernet(key)
         encrypted = f.encrypt(serialized)
         
-        return encrypted, key
+        # Add HMAC integrity tag (32 bytes appended)
+        integrity_tag = _compute_hmac(key, encrypted)
+        payload = encrypted + integrity_tag
+        
+        return payload, key
     except Exception as e:
         logger.error(f"Parameter encryption failed: {e}")
         raise RuntimeError(f"Failed to encrypt parameters: {e}")
@@ -264,9 +351,9 @@ def decrypt_parameters(encrypted_data: bytes, key: bytes) -> list:
     Decrypt model parameters back to list of numpy arrays.
     
     HOW IT WORKS:
-    1. Takes the encrypted blob and the key
+    1. Verifies HMAC integrity tag (detects tampering)
     2. Decrypts using Fernet
-    3. Deserializes back to list of numpy arrays
+    3. Deserializes safely back to numpy arrays (NO pickle)
     
     Args:
         encrypted_data: The encrypted bytes from encrypt_parameters()
@@ -276,13 +363,25 @@ def decrypt_parameters(encrypted_data: bytes, key: bytes) -> list:
         List of numpy arrays (the original model weights)
     """
     try:
+        # Verify HMAC integrity (last 32 bytes)
+        if len(encrypted_data) < 32:
+            raise RuntimeError("Data too short — missing integrity tag")
+        
+        ciphertext = encrypted_data[:-32]
+        received_tag = encrypted_data[-32:]
+        expected_tag = _compute_hmac(key, ciphertext)
+        
+        if not hmac.compare_digest(received_tag, expected_tag):
+            logger.error("HMAC verification FAILED — data has been tampered with!")
+            raise RuntimeError("Integrity check failed — possible tampering detected!")
+        
         f = Fernet(key)
-        decrypted = f.decrypt(encrypted_data)
-        params = pickle.loads(decrypted)
+        decrypted = f.decrypt(ciphertext)
+        params = _safe_deserialize_params(decrypted)
         return params
     except InvalidToken:
         logger.error("Decryption failed: Invalid key or corrupted data!")
-        raise RuntimeError("Invalid quantum key - possible tampering detected!")
+        raise RuntimeError("Invalid quantum key — possible tampering detected!")
     except Exception as e:
         logger.error(f"Parameter decryption failed: {e}")
         raise

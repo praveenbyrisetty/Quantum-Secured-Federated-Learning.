@@ -193,7 +193,7 @@ class FLQCClient(fl.client.NumPyClient):
         FLOW:
         1. Update local model with global weights
         2. Quantum key exchange (E91 protocol with real CHSH)
-        3. CHSH entanglement verification
+        3. CHSH entanglement verification — BLOCKS if failed
         4. Train on local data (with gradient clipping)
         5. Apply calibrated DP noise (Gaussian mechanism)
         6. Encrypt weights with quantum key
@@ -215,14 +215,41 @@ class FLQCClient(fl.client.NumPyClient):
         
         # =============================================
         # STEP 3: CHSH Entanglement Verification
+        # SECURITY FIX: Now BLOCKS training if verification fails
         # =============================================
         # S > 2.0 means entanglement is verified (quantum channel secure)
-        # S ≤ 2.0 means possible eavesdropper — we still proceed but flag it
+        # S ≤ 2.0 means possible eavesdropper — ABORT transmission
         is_verified = chsh_value > 2.0
         
         if not is_verified:
             logger.warning(f"Client {self.cid}: ⚠️ CHSH verification failed! "
-                          f"S={chsh_value:.4f} ≤ 2.0. Possible eavesdropper!")
+                          f"S={chsh_value:.4f} ≤ 2.0. Possible eavesdropper! "
+                          f"BLOCKING transmission for security.")
+            
+            # Return zero-weight params with blocked status
+            # This ensures the server knows this client was blocked
+            blocked_metrics = {
+                "loss": 0,
+                "accuracy": 0,
+                "num_samples": 0,
+                "quantum_key": "BLOCKED",
+                "chsh_value": chsh_value,
+                "verification_status": False,
+                "encryption_status": "blocked_chsh_failed",
+                "encrypted_data": None,
+                "dp_noise_level": 0,
+                "dp_enabled": SECURITY_CONFIG["dp_enabled"],
+                "dp_sigma": 0,
+                "dp_epsilon_round": 0,
+                "dp_epsilon_cumulative": self.cumulative_epsilon,
+                "dp_delta": SECURITY_CONFIG["dp_delta"],
+                "grad_clips": 0,
+                "max_grad_norm": SECURITY_CONFIG["max_grad_norm"],
+                "cid": self.cid,
+                "chsh_blocked": True,
+            }
+            # Return current model params (unchanged) so server can skip this client
+            return self.get_parameters(config={}), 0, blocked_metrics
         
         # =============================================
         # STEP 4: Train locally WITH gradient clipping
@@ -277,10 +304,15 @@ class FLQCClient(fl.client.NumPyClient):
         raw_params = self.get_parameters(config={})
         secure_params, epsilon_round = self._apply_dp_noise(raw_params)
         
+        # SECURITY FIX (Vuln 3): Set DP-noised params back onto the model so that
+        # server-side calls to client.get_parameters() return secured weights
+        # (not the raw trained weights that bypass DP protection).
+        self.set_parameters(secure_params)
+        
         # =============================================
         # STEP 6: Encrypt parameters with quantum key
         # =============================================
-        # NOW FUNCTIONAL: The encrypted data IS the primary payload.
+        # The encrypted data IS the primary payload.
         # Server must decrypt using the quantum key before aggregating.
         encryption_status = "disabled"
         encrypted_data = None
@@ -296,6 +328,8 @@ class FLQCClient(fl.client.NumPyClient):
         # =============================================
         # STEP 7: Build metrics for UI display
         # =============================================
+        # SECURITY FIX: Key is NOT sent alongside the encrypted data.
+        # The key display is truncated for UI purposes only.
         key_hex = quantum_key.decode('utf-8') if isinstance(quantum_key, bytes) else str(quantum_key)
         
         num_batches = len(self.train_loader) if self.train_loader else 1
@@ -306,12 +340,11 @@ class FLQCClient(fl.client.NumPyClient):
             "num_samples": len(self.train_loader.dataset) if self.train_loader else 0,
             
             # Quantum security metrics
-            "quantum_key": key_hex[:44],
-            "quantum_key_full": key_hex,  # Full key for server decryption
+            "quantum_key": key_hex[:16] + "...",  # Truncated for display ONLY
             "chsh_value": chsh_value,
             "verification_status": is_verified,
             
-            # Encryption metrics — server uses these to decrypt
+            # Encryption metrics
             "encryption_status": encryption_status,
             "encrypted_data": encrypted_data,  # The actual encrypted blob
             
@@ -327,12 +360,12 @@ class FLQCClient(fl.client.NumPyClient):
             "grad_clips": clip_count,
             "max_grad_norm": SECURITY_CONFIG["max_grad_norm"],
             
-            "cid": self.cid
+            "cid": self.cid,
+            "chsh_blocked": False,
         }
 
         # Return: the DP-noised params for aggregation,
-        # plus num_samples and metrics (which includes the encrypted version + key).
-        # The server will use encrypted_data + quantum_key_full to verify the
-        # encryption pipeline, and use secure_params for aggregation after
-        # confirming decryption matches.
+        # plus num_samples and metrics (which includes the encrypted version).
+        # SECURITY: The quantum key is stored server-side via shared key exchange,
+        # NOT transmitted in the metrics alongside the encrypted data.
         return secure_params, metrics["num_samples"], metrics

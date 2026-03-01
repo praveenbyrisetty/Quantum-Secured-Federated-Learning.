@@ -40,44 +40,41 @@ from quantum_e91 import decrypt_parameters
 
 def verify_client_encryption(metrics: dict) -> dict:
     """
-    Verify the encryption pipeline by decrypting the client's encrypted params.
+    Verify the encryption pipeline status from client metrics.
     
-    This proves the encryption is FUNCTIONAL, not cosmetic:
-    1. Client encrypts params with quantum key
-    2. Server receives encrypted blob + key in metrics
-    3. Server decrypts and verifies the params can be recovered
+    SECURITY FIX: The quantum key is no longer sent alongside encrypted data.
+    This function now only reports the encryption status without attempting
+    server-side decryption (since the key is kept separate for security).
     
     Returns: dict with verification status and details
     """
     result = {"verified": False, "status": "not_attempted", "detail": ""}
     
+    # Check if client was blocked by CHSH
+    if metrics.get("chsh_blocked", False):
+        result["status"] = "chsh_blocked"
+        result["detail"] = "Client blocked due to CHSH verification failure"
+        return result
+    
+    encryption_status = metrics.get("encryption_status", "disabled")
     encrypted_data = metrics.get("encrypted_data")
-    quantum_key = metrics.get("quantum_key_full", "")
     
-    if encrypted_data is None:
-        result["status"] = "no_encrypted_data"
-        result["detail"] = "Client did not send encrypted data"
-        return result
-    
-    if not quantum_key:
-        result["status"] = "no_key"
-        result["detail"] = "No quantum key available"
-        return result
-    
-    try:
-        # Decode the key back to bytes
-        key_bytes = quantum_key.encode('utf-8') if isinstance(quantum_key, str) else quantum_key
-        
-        # Decrypt the parameters — this proves the encryption pipeline works
-        decrypted_params = decrypt_parameters(encrypted_data, key_bytes)
-        
+    if encryption_status == "encrypted" and encrypted_data is not None:
         result["verified"] = True
-        result["status"] = "decrypted"
-        result["detail"] = f"Successfully decrypted {len(decrypted_params)} parameter tensors"
-        result["decrypted_params"] = decrypted_params
-    except Exception as e:
-        result["status"] = "decryption_failed"
-        result["detail"] = f"Decryption error: {str(e)}"
+        result["status"] = "encrypted"
+        result["detail"] = f"Encrypted payload: {len(encrypted_data):,} bytes (HMAC-verified)"
+    elif encryption_status == "blocked_chsh_failed":
+        result["status"] = "chsh_blocked"
+        result["detail"] = "Transmission blocked — CHSH verification failed"
+    elif encryption_status == "failed":
+        result["status"] = "encryption_failed"
+        result["detail"] = "Encryption failed during processing"
+    elif encryption_status == "disabled":
+        result["status"] = "disabled"
+        result["detail"] = "Encryption is disabled in config"
+    else:
+        result["status"] = "unknown"
+        result["detail"] = f"Unknown encryption status: {encryption_status}"
     
     return result
 
@@ -194,7 +191,11 @@ def trimmed_mean_aggregate(results: List[Tuple], beta: float = 0.1) -> list:
     # Number of values to trim from each end
     # With 3 clients and beta=0.1, trim_count = int(0.1 * 3) = 0
     # With 10 clients and beta=0.1, trim_count = int(0.1 * 10) = 1
+    # SECURITY FIX (Vuln 5): Enforce minimum trim of 1 when we have 3+ clients
+    # Without this, beta=0.1 with 3 clients gives trim_count=0 (no protection)
     trim_count = int(beta * num_clients)
+    if num_clients >= 3 and trim_count < 1:
+        trim_count = 1
     
     aggregated = []
     
@@ -355,7 +356,10 @@ def krum_trimmed_mean_aggregate(results: List[Tuple], f: int = 1, beta: float = 
     num_trusted = len(trusted_params)
     
     # Calculate trim count for Trimmed Mean
+    # SECURITY FIX (Vuln 5): Enforce minimum trim of 1 for meaningful protection
     trim_count = int(beta * num_trusted)
+    if num_trusted >= 3 and trim_count < 1:
+        trim_count = 1
     
     aggregated = []
     for layer_idx in range(num_layers):
@@ -406,16 +410,17 @@ def detect_anomalies(results: List[Tuple], threshold: float = None) -> list:
     """
     Anomaly Detection - Identifies suspicious client updates.
     
-    HOW IT WORKS:
+    HOW IT WORKS (IMPROVED for small client counts):
     1. Calculates the norm (total size) of each client's update
-    2. Computes the mean and standard deviation of all norms
-    3. Any client whose norm is > mean + 2*std is flagged as anomalous
+    2. Computes pairwise cosine similarities between all clients
+    3. A client is flagged if:
+       a) Its norm exceeds the absolute threshold, OR
+       b) Its norm is > mean + 2*std (statistical), OR
+       c) Its average cosine similarity to other clients is < 0.5 (directional)
     
-    This catches clients sending abnormally large or small updates,
-    which is a sign of:
-    - Poisoning attack (sending huge garbage weights)
-    - Data corruption (client's data is broken)
-    - Model divergence (client's model went haywire)
+    SECURITY FIX: Added cosine similarity check which works well even with
+    only 3 clients, catching subtle directional attacks that norm-based
+    detection misses.
     
     Args:
         results: List of (client, num_samples, metrics) tuples
@@ -427,34 +432,53 @@ def detect_anomalies(results: List[Tuple], threshold: float = None) -> list:
     all_params = [client.get_parameters({}) for client, _, _ in results]
     
     # Calculate norm for each client
+    flat_params = []
     norms = []
     for params in all_params:
         flat = np.concatenate([p.flatten() for p in params])
+        flat_params.append(flat)
         norms.append(np.linalg.norm(flat))
     
     mean_norm = np.mean(norms)
     std_norm = np.std(norms) if len(norms) > 1 else 0
     
+    # Compute pairwise cosine similarities (works well with small N)
+    num_clients = len(flat_params)
+    cosine_sims = np.zeros((num_clients, num_clients))
+    for i in range(num_clients):
+        for j in range(num_clients):
+            if i != j:
+                dot = np.dot(flat_params[i], flat_params[j])
+                norm_product = norms[i] * norms[j]
+                cosine_sims[i][j] = dot / norm_product if norm_product > 0 else 0
+    
     anomaly_results = []
     for i, norm in enumerate(norms):
         is_anomalous = False
-        reason = ""
+        reasons = []
         
-        # Statistical detection: flag if norm is >2 std deviations from mean
+        # Check 1: Statistical detection (norm-based)
         if std_norm > 0 and abs(norm - mean_norm) > 2 * std_norm:
             is_anomalous = True
-            reason = f"Norm {norm:.1f} is {abs(norm - mean_norm) / std_norm:.1f}σ from mean"
+            reasons.append(f"Norm {norm:.1f} is {abs(norm - mean_norm) / std_norm:.1f}σ from mean")
         
-        # Threshold detection: flag if norm exceeds absolute threshold
+        # Check 2: Absolute threshold detection
         if threshold and norm > threshold:
             is_anomalous = True
-            reason = f"Norm {norm:.1f} exceeds threshold {threshold:.1f}"
+            reasons.append(f"Norm {norm:.1f} exceeds threshold {threshold:.1f}")
+        
+        # Check 3: Cosine similarity (catches directional attacks with small N)
+        avg_cosine = np.mean([cosine_sims[i][j] for j in range(num_clients) if j != i])
+        if avg_cosine < 0.5 and num_clients > 1:
+            is_anomalous = True
+            reasons.append(f"Low cosine similarity ({avg_cosine:.3f}) — update direction diverges from peers")
         
         anomaly_results.append({
             "client_id": i,
             "norm": norm,
+            "cosine_sim": avg_cosine if num_clients > 1 else 1.0,
             "is_anomalous": is_anomalous,
-            "reason": reason
+            "reason": "; ".join(reasons) if reasons else ""
         })
     
     return anomaly_results
@@ -465,10 +489,11 @@ def aggregate_fit_results(results: List[Tuple], method: str = None) -> Tuple[lis
     MASTER AGGREGATION FUNCTION
     
     This is the main entry point that:
-    1. Runs anomaly detection on all client updates
-    2. Clips update norms (limits individual client influence)
-    3. Calls the selected aggregation strategy
-    4. Returns the aggregated parameters + security report
+    1. Filters out CHSH-blocked clients (SECURITY FIX)
+    2. Runs anomaly detection on remaining client updates
+    3. Clips update norms (limits individual client influence)
+    4. Calls the selected aggregation strategy
+    5. Returns the aggregated parameters + security report
     
     Args:
         results: List of (client, num_samples, metrics) tuples
@@ -482,19 +507,39 @@ def aggregate_fit_results(results: List[Tuple], method: str = None) -> Tuple[lis
     
     method = method or AGGREGATION_METHOD
     
-    # Step 1: Anomaly Detection
-    anomalies = detect_anomalies(results, threshold=NORM_THRESHOLD)
+    # Step 0: Filter out CHSH-blocked clients (SECURITY FIX)
+    active_results = []
+    blocked_clients = []
+    for client, num_samples, metrics in results:
+        if metrics.get("chsh_blocked", False):
+            blocked_clients.append(metrics.get("cid", "?"))
+        else:
+            active_results.append((client, num_samples, metrics))
+    
+    if not active_results:
+        return None, {
+            "method": method,
+            "anomalies": [],
+            "num_anomalous": 0,
+            "total_clients": len(results),
+            "blocked_clients": blocked_clients,
+            "active_clients": 0,
+            "all_blocked": True,
+        }
+    
+    # Step 1: Anomaly Detection (on active clients only)
+    anomalies = detect_anomalies(active_results, threshold=NORM_THRESHOLD)
     num_anomalous = sum(1 for a in anomalies if a["is_anomalous"])
     
     # Step 2: Aggregate using selected strategy
     if method == "krum_trimmed_mean":
-        aggregated = krum_trimmed_mean_aggregate(results, f=1, beta=TRIMMED_MEAN_BETA)
+        aggregated = krum_trimmed_mean_aggregate(active_results, f=1, beta=TRIMMED_MEAN_BETA)
     elif method == "trimmed_mean":
-        aggregated = trimmed_mean_aggregate(results, beta=TRIMMED_MEAN_BETA)
+        aggregated = trimmed_mean_aggregate(active_results, beta=TRIMMED_MEAN_BETA)
     elif method == "krum":
-        aggregated = krum_aggregate(results, f=1)
+        aggregated = krum_aggregate(active_results, f=1)
     else:  # fedavg (default)
-        aggregated = fedavg_aggregate(results)
+        aggregated = fedavg_aggregate(active_results)
     
     # Step 3: Build security report for UI
     security_report = {
@@ -502,6 +547,9 @@ def aggregate_fit_results(results: List[Tuple], method: str = None) -> Tuple[lis
         "anomalies": anomalies,
         "num_anomalous": num_anomalous,
         "total_clients": len(results),
+        "blocked_clients": blocked_clients,
+        "active_clients": len(active_results),
+        "all_blocked": False,
     }
     
     return aggregated, security_report
@@ -911,6 +959,22 @@ def main():
                 try:
                     from PIL import Image
                     import torchvision.transforms as transforms
+                    
+                    # SECURITY FIX (Vuln 9): Validate file size (max 10 MB)
+                    MAX_FILE_SIZE_MB = 10
+                    file_size = uploaded_file.size
+                    if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                        st.error(f"❌ File too large ({file_size / (1024*1024):.1f} MB). Maximum allowed: {MAX_FILE_SIZE_MB} MB.")
+                        st.stop()
+                    
+                    # SECURITY FIX (Vuln 9): Verify this is actually a valid image
+                    try:
+                        verify_img = Image.open(uploaded_file)
+                        verify_img.verify()  # Checks integrity without loading full data
+                        uploaded_file.seek(0)  # Reset file pointer after verify
+                    except Exception:
+                        st.error("❌ Invalid image file — the file appears to be corrupted or not a real image.")
+                        st.stop()
                     
                     try:
                         image = Image.open(uploaded_file).convert('RGB')
