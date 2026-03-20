@@ -62,11 +62,13 @@ CLASS_DISPLAY = {
     'vasc':  'Vascular Lesions',
 }
 
-# Client class assignments (non-IID partitioning)
+# Client class assignments (non-IID partitioning fixed for Krum compatibility)
+# Added 'nv' (Melanocytic Nevi, >60% of dataset) to all hospitals as a shared baseline.
+# This prevents Krum Aggregation from falsely discarding honest hospitals as "divergent".
 CLIENT_CLASSES = {
-    0: ['nv', 'mel'],           # Hospital A: Melanocytic focus
-    1: ['bkl', 'bcc', 'akiec'], # Hospital B: Keratosis & Carcinoma
-    2: ['vasc', 'df'],          # Hospital C: Vascular & Fibroma
+    0: ['nv', 'mel'],                  # Hospital A: Melanocytic focus
+    1: ['nv', 'bkl', 'bcc', 'akiec'],  # Hospital B: Keratosis & Carcinoma + Basline
+    2: ['nv', 'vasc', 'df'],           # Hospital C: Vascular & Fibroma + Baseline
 }
 
 

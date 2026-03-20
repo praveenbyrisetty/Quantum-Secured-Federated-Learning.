@@ -631,7 +631,9 @@ def main():
                     client_classes = CLIENT_CLASSES.get(i, [])
                     class_labels = ', '.join(client_classes)
                     st.markdown(f"### 🏥 Hospital {chr(65+i)}")
-                    st.caption(f"{', '.join([CLASS_DISPLAY[c] for c in client_classes])}")
+                    # Fixed minimum height (e.g., 50px) ensures columns align perfectly even if text wraps
+                    labels = ', '.join([CLASS_DISPLAY[c] for c in client_classes])
+                    st.markdown(f'<div style="min-height: 50px; font-size: 14px; color: #a3a8b8;">{labels}</div>', unsafe_allow_html=True)
                     st.divider()
                     client_containers.append(col.container())
             
