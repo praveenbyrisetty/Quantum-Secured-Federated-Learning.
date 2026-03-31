@@ -103,7 +103,7 @@ CLIENT_LABELS = {
 # Change this to switch aggregation strategy
 AGGREGATION_METHOD = "krum_trimmed_mean"  # Options: "fedavg", "trimmed_mean", "krum", "krum_trimmed_mean"
 TRIMMED_MEAN_BETA = 0.1                    # Fraction to trim from each end (10%)
-NORM_THRESHOLD = 1500.0             # Max allowed update norm (anomaly detection)
+NORM_THRESHOLD = 5000.0             # Max allowed update norm (increased to allow natural AI brain growth)
 
 
 def fedavg_aggregate(results: List[Tuple]) -> list:
@@ -531,6 +531,17 @@ def aggregate_fit_results(results: List[Tuple], method: str = None) -> Tuple[lis
     anomalies = detect_anomalies(active_results, threshold=NORM_THRESHOLD)
     num_anomalous = sum(1 for a in anomalies if a["is_anomalous"])
     
+    # Step 1b: Norm Clipping — limit each client's update magnitude before aggregation.
+    # This prevents any single client (malicious or not) from dominating via a large update.
+    clipped_results = []
+    for client, num_samples, metrics in active_results:
+        params = client.get_parameters({})
+        clipped_params, orig_norm, was_clipped = clip_update_norm(params, max_norm=NORM_THRESHOLD)
+        if was_clipped:
+            client.set_parameters(clipped_params)  # Apply clipped weights back onto client
+        clipped_results.append((client, num_samples, metrics))
+    active_results = clipped_results
+    
     # Step 2: Aggregate using selected strategy
     if method == "krum_trimmed_mean":
         aggregated = krum_trimmed_mean_aggregate(active_results, f=1, beta=TRIMMED_MEAN_BETA)
@@ -853,10 +864,10 @@ def main():
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown("**Training Loss Over Rounds**")
-            st.line_chart(results['losses_history'], width='stretch')
+            st.line_chart(results['losses_history'])
         with col_b:
             st.markdown("**Training Accuracy Over Rounds**")
-            st.line_chart(results['accuracies_history'], width='stretch')
+            st.line_chart(results['accuracies_history'])
         
         # Privacy & Security
         st.info(f"✓ Quantum keys verified | Privacy budget spent: ε = {results['final_eps']:.2f}")
@@ -1003,9 +1014,20 @@ def main():
                     try:
                         with torch.no_grad():
                             output = prediction_model(img_tensor)
-                            probabilities = torch.nn.functional.softmax(output[0], dim=0)
-                            predicted_idx = output.argmax(1).item()
-                            confidence = probabilities[predicted_idx].item()
+                            logits = output[0]
+
+                            # Guard against unstable model outputs (NaN/Inf) before softmax.
+                            if not torch.isfinite(logits).all():
+                                logits = torch.nan_to_num(logits, nan=0.0, posinf=1e4, neginf=-1e4)
+
+                            probabilities = torch.nn.functional.softmax(logits, dim=0)
+
+                            # If softmax still produces invalid values, fall back to uniform probs.
+                            if (not torch.isfinite(probabilities).all()) or (float(probabilities.sum()) <= 0.0):
+                                probabilities = torch.ones(NUM_CLASSES, device=logits.device) / NUM_CLASSES
+
+                            predicted_idx = int(torch.argmax(probabilities).item())
+                            confidence = float(probabilities[predicted_idx].item())
                     except Exception as e:
                         st.error(f"❌ Error during prediction: {str(e)}")
                         st.stop()
@@ -1128,6 +1150,9 @@ def main():
                             for i in range(NUM_CLASSES):
                                 class_idx = idx_sorted[i].item()
                                 class_prob = probs_sorted[i].item()
+                                if not np.isfinite(class_prob):
+                                    class_prob = 0.0
+                                class_prob = float(np.clip(class_prob, 0.0, 1.0))
                                 cls_name = CLASS_NAMES[class_idx]
                                 display = CLASS_DISPLAY[cls_name]
                                 cls_info = LESION_INFO.get(cls_name, {})

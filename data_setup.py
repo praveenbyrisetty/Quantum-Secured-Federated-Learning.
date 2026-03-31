@@ -62,13 +62,12 @@ CLASS_DISPLAY = {
     'vasc':  'Vascular Lesions',
 }
 
-# Client class assignments (non-IID partitioning fixed for Krum compatibility)
-# Added 'nv' (Melanocytic Nevi, >60% of dataset) to all hospitals as a shared baseline.
-# This prevents Krum Aggregation from falsely discarding honest hospitals as "divergent".
+# Client class assignments (IID partitioning for effective Federated Learning)
+# Non-IID caused complete forgetting of minority classes due to gradient cancellation.
 CLIENT_CLASSES = {
-    0: ['nv', 'mel'],                  # Hospital A: Melanocytic focus
-    1: ['nv', 'bkl', 'bcc', 'akiec'],  # Hospital B: Keratosis & Carcinoma + Basline
-    2: ['nv', 'vasc', 'df'],           # Hospital C: Vascular & Fibroma + Baseline
+    0: CLASS_NAMES,  # Hospital A
+    1: CLASS_NAMES,  # Hospital B
+    2: CLASS_NAMES,  # Hospital C
 }
 
 
@@ -273,7 +272,7 @@ def get_client_dataset(client_id, total_clients=3, train=True):
     # Get this client's assigned classes
     selected_classes = CLIENT_CLASSES.get(client_id, CLASS_NAMES)
     
-    # Load full dataset for this client's classes
+    # Load full dataset with all available classes
     transform = get_transforms(train=train)
     full_dataset = HAM10000Dataset(
         root_dir=ORGANIZED_DIR,
@@ -282,18 +281,21 @@ def get_client_dataset(client_id, total_clients=3, train=True):
     )
     
     if len(full_dataset) == 0:
-        raise ValueError(
-            f"No images found for Client {client_id} "
-            f"(classes: {selected_classes}). "
-            f"Check that {ORGANIZED_DIR} contains the class folders."
-        )
+        raise ValueError("No images found. Check that the dataset is organized.")
     
-    # 80/20 train/test split
-    train_size = int(0.8 * len(full_dataset))
-    test_size = len(full_dataset) - train_size
-    
+    # Partition the FULL dataset into N non-overlapping chunks for clients
     generator = torch.Generator().manual_seed(42)
-    train_set, test_set = random_split(full_dataset, [train_size, test_size], generator=generator)
+    chunk_size = len(full_dataset) // total_clients
+    lengths = [chunk_size] * total_clients
+    lengths[-1] += len(full_dataset) % total_clients  # Add remainder
+    
+    partitions = random_split(full_dataset, lengths, generator=generator)
+    client_dataset = partitions[client_id]
+    
+    # 80/20 train/test split for THIS client's partition
+    train_size = int(0.8 * len(client_dataset))
+    test_size = len(client_dataset) - train_size
+    train_set, test_set = random_split(client_dataset, [train_size, test_size], generator=generator)
     
     return train_set if train else test_set
 

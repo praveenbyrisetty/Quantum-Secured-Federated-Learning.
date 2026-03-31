@@ -388,7 +388,7 @@ def decrypt_parameters(encrypted_data: bytes, key: bytes) -> list:
 
 
 # ==========================================
-# 6. SHARED KEY EXCHANGE
+# 7. SHARED KEY EXCHANGE
 # ==========================================
 def generate_shared_key(client_id: str, server_id: str = "server") -> Tuple[bytes, float]:
     """

@@ -110,15 +110,15 @@ FLQC is a **quantum-secured federated learning framework** with a multi-layered 
 
 The HAM10000 (Human Against Machine with 10,000 training images) dataset contains **10,015 dermoscopic images** across **7 skin lesion classes**:
 
-| Class   | Full Name              | Type          |
-|---------|------------------------|---------------|
-| `akiec` | Actinic Keratoses      | Pre-malignant |
-| `bcc`   | Basal Cell Carcinoma   | Malignant     |
-| `bkl`   | Benign Keratosis       | Benign        |
-| `df`    | Dermatofibroma         | Benign        |
-| `mel`   | Melanoma               | ⚠️ Malignant  |
-| `nv`    | Melanocytic Nevi       | Benign        |
-| `vasc`  | Vascular Lesions       | Benign        |
+| Class   | Full Name            | Type          |
+| ------- | -------------------- | ------------- |
+| `akiec` | Actinic Keratoses    | Pre-malignant |
+| `bcc`   | Basal Cell Carcinoma | Malignant     |
+| `bkl`   | Benign Keratosis     | Benign        |
+| `df`    | Dermatofibroma       | Benign        |
+| `mel`   | Melanoma             | ⚠️ Malignant  |
+| `nv`    | Melanocytic Nevi     | Benign        |
+| `vasc`  | Vascular Lesions     | Benign        |
 
 Download: [Kaggle — HAM10000](https://www.kaggle.com/datasets/kmader/skin-cancer-mnist-ham10000)
 
@@ -212,12 +212,12 @@ Then:
 
 ### Aggregation Strategies
 
-| Strategy                | Security | How It Works                                                             | Best For                     |
-|-------------------------|----------|--------------------------------------------------------------------------|------------------------------|
-| **Krum + Trimmed Mean** | ⭐⭐⭐   | Krum excludes suspicious clients, Trimmed Mean aggregates the rest       | Maximum security (default)   |
-| **Trimmed Mean**        | ⭐⭐     | Sorts values per weight, removes extremes, averages the middle           | Balanced security + accuracy |
-| **Krum**                | ⭐⭐     | Selects single most trustworthy update by pairwise distance              | Byzantine fault tolerance    |
-| **FedAvg**              | ❌       | Simple weighted average by sample count                                   | Trusted environments only    |
+| Strategy                | Security | How It Works                                                       | Best For                     |
+| ----------------------- | -------- | ------------------------------------------------------------------ | ---------------------------- |
+| **Krum + Trimmed Mean** | ⭐⭐⭐   | Krum excludes suspicious clients, Trimmed Mean aggregates the rest | Maximum security (default)   |
+| **Trimmed Mean**        | ⭐⭐     | Sorts values per weight, removes extremes, averages the middle     | Balanced security + accuracy |
+| **Krum**                | ⭐⭐     | Selects single most trustworthy update by pairwise distance        | Byzantine fault tolerance    |
+| **FedAvg**              | ❌       | Simple weighted average by sample count                            | Trusted environments only    |
 
 ### Communication Security (Layer 1)
 
@@ -313,4 +313,7 @@ If you use this code in your research, please cite:
 ## Acknowledgments
 
 - Built with [PyTorch](https://pytorch.org/), [Qiskit](https://qiskit.org/), [Flower](https://flower.ai/), and [Streamlit](https://streamlit.io/)
-- HAM10000 dataset: Tschandl, P. et al. (2018). *The HAM10000 dataset, a large collection of multi-source dermatoscopic images of common pigmented skin lesions.* Scientific Data, 5, 180161.
+- HAM10000 dataset: Tschandl, P. et al. (2018). _The HAM10000 dataset, a large collection of multi-source dermatoscopic images of common pigmented skin lesions._ Scientific Data, 5, 180161.
+
+.\venv\Scripts\activate; streamlit run server.py
+   

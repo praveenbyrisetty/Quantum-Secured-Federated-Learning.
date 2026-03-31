@@ -144,7 +144,7 @@ class FLQCClient(fl.client.NumPyClient):
         # The true sensitivity of the model weights is strictly bounded by the learning rate
         # and clipping norm combined. This mathematically corrects the noise scaling to a non-destructive
         # level while cleanly maintaining the formal DP guarantee (ε, δ).
-        lr = 0.01
+        lr = 0.005
         sensitivity = SECURITY_CONFIG["max_grad_norm"] * lr
         
         sigma = sensitivity * math.sqrt(2 * math.log(1.25 / delta)) / epsilon
@@ -261,8 +261,14 @@ class FLQCClient(fl.client.NumPyClient):
         # STEP 4: Train locally WITH gradient clipping
         # =============================================
         self.model.train()
-        criterion = torch.nn.CrossEntropyLoss()
-        optimizer = optim.SGD(self.model.parameters(), lr=0.01, momentum=0.9)
+        # Class weights to handle severe HAM10000 class imbalance (majority 'nv')
+        # Inverse class frequency for: ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
+        class_weights = torch.tensor(
+            [4.37, 2.78, 1.30, 12.44, 1.28, 0.21, 10.07], 
+            dtype=torch.float32
+        ).to(self.device)
+        criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+        optimizer = optim.SGD(self.model.parameters(), lr=0.005, momentum=0.9)
         
         # Cosine annealing LR scheduler for smoother convergence
         local_epochs = SECURITY_CONFIG["local_epochs"]
