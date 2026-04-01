@@ -14,10 +14,10 @@ DATASET: HAM10000 — 10,015 images, 7 classes:
   - vasc:  Vascular Lesions
   - df:    Dermatofibroma
 
-CLIENT PARTITIONING (non-IID, simulating hospital specialization):
-  - Client 0 (Hospital A): nv, mel   — Melanocytic focus
-  - Client 1 (Hospital B): bkl, bcc, akiec — Keratosis & Carcinoma
-  - Client 2 (Hospital C): vasc, df  — Vascular & Fibroma
+CLIENT PARTITIONING (IID - Independent and Identically Distributed):
+  - Client 0 (Hospital A): All 7 classes
+  - Client 1 (Hospital B): All 7 classes
+  - Client 2 (Hospital C): All 7 classes
 
 SETUP:
   Download HAM10000 from Kaggle and place in ./data/HAM10000/:
@@ -250,9 +250,9 @@ def get_client_dataset(client_id, total_clients=3, train=True):
     """
     Get dataset for each client based on non-IID class partitioning.
     
-    - Client 0 (Hospital A): nv, mel — Melanocytic focus
-    - Client 1 (Hospital B): bkl, bcc, akiec — Keratosis & Carcinoma
-    - Client 2 (Hospital C): vasc, df — Vascular & Fibroma
+    - Client 0 (Hospital A): All 7 classes
+    - Client 1 (Hospital B): All 7 classes
+    - Client 2 (Hospital C): All 7 classes
     
     Args:
         client_id: Integer ID of the client (0, 1, 2)

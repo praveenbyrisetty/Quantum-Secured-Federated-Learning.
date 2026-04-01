@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 NUM_CLASSES = 7  # HAM10000 has 7 skin lesion classes
 
-class MultiModalFederatedModel(nn.Module):
+class HybridModel(nn.Module):
     """
     CNN Model for HAM10000 Skin Lesion Classification (7 classes).
     
@@ -33,29 +33,7 @@ class MultiModalFederatedModel(nn.Module):
     So FC input = 128 channels × 16 × 16 = 32,768
     """
     def __init__(self, data_type='image'):
-        super(MultiModalFederatedModel, self).__init__()
-        
-        # Conv Block 1: 3 → 32 channels
-        self.conv1 = nn.Conv2d(3, 32, 3, padding=1)
-        self.bn1 = nn.BatchNorm2d(32)
-        
-        # Conv Block 2: 32 → 64 channels
-        self.conv2 = nn.Conv2d(32, 64, 3, padding=1)
-        self.bn2 = nn.BatchNorm2d(64)
-        
-        # Conv Block 3: 64 → 128 channels
-        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        
-        self.pool = nn.MaxPool2d(2, 2)
-        self.dropout = nn.Dropout(0.25)
-        
-        # Fully connected layers
-        # After 3 pools on 128x128: 128 → 64 → 32 → 16
-        # FC input = 128 * 16 * 16 = 32768
-        self.fc1 = nn.Linear(128 * 16 * 16, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, NUM_CLASSES)  # 7 skin lesion classes
+        0
 
     def forward(self, x):
         # Conv Block 1: Conv → BN → ReLU → Pool

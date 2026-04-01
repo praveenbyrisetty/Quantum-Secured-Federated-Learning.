@@ -11,12 +11,12 @@ FLQC is a **quantum-secured federated learning framework** with a multi-layered 
 
 ### Key Features
 
-- **Heterogeneous Data Distribution** — Non-IID split across 3 simulated hospitals:
-  - 🏥 **Hospital A (Client 0)**: Melanocytic Nevi (`nv`), Melanoma (`mel`)
-  - 🏥 **Hospital B (Client 1)**: Melanocytic Nevi (`nv`), Benign Keratosis (`bkl`), Basal Cell Carcinoma (`bcc`), Actinic Keratoses (`akiec`)
-  - 🏥 **Hospital C (Client 2)**: Melanocytic Nevi (`nv`), Vascular Lesions (`vasc`), Dermatofibroma (`df`)
+- **Homogeneous Data Distribution** — IID (Independent and Identically Distributed) split across 3 simulated hospitals:
+  - 🏥 **Hospital A (Client 0)**: All 7 classes
+  - 🏥 **Hospital B (Client 1)**: All 7 classes
+  - 🏥 **Hospital C (Client 2)**: All 7 classes
 
-  > `nv` (Melanocytic Nevi, >60% of the dataset) is shared across all hospitals as a baseline class. This prevents Krum aggregation from falsely discarding honest hospitals as divergent due to specialization alone.
+  > The full HAM10000 dataset is randomly shuffled and evenly distributed. This ensures models learn uniformly and prevents security aggregators (like Krum) from falsely flagging honest hospitals as anomalous due to data skew.
 
 - **3-Layer Security Architecture**:
   - **Layer 1 — Communication**: E91 quantum key distribution + Fernet AES-128 encryption of model parameters + CHSH entanglement verification
@@ -71,8 +71,8 @@ FLQC is a **quantum-secured federated learning framework** with a multi-layered 
            │ 🔐 Encrypted     │ 🔐 Encrypted     │ 🔐 Encrypted
    ┌───────▼──────┐   ┌───────▼──────┐    ┌──────▼───────┐
    │  Hospital A  │   │  Hospital B  │    │  Hospital C  │
-   │  nv, mel     │   │  nv, bkl,    │    │  nv, vasc,   │
-   │              │   │  bcc, akiec  │    │  df          │
+   │All 7 classes │   │All 7 classes │    │All 7 classes │
+   │              │   │              │    │              │
    │  CNN Model   │   │  CNN Model   │    │  CNN Model   │
    │  + Grad Clip │   │  + Grad Clip │    │  + Grad Clip │
    │  + DP Noise  │   │  + DP Noise  │    │  + DP Noise  │
@@ -195,7 +195,7 @@ Then:
 ├── server.py              # Streamlit UI + FL orchestration + aggregation strategies
 ├── client_flwr.py         # FL client: gradient clipping, DP noise, E91 encryption
 ├── quantum_e91.py         # E91 quantum key generation, CHSH verification, encryption
-├── multi_modal_model.py   # CNN model (3 conv blocks → 3 FC layers, 7-class output)
+├── hybrid_model.py        # CNN model (3 conv blocks → 3 FC layers, 7-class output)
 ├── data_setup.py          # HAM10000 dataset loader + non-IID hospital partitioning
 ├── download_dataset.py    # Kaggle auto-downloader for HAM10000
 ├── GPU_SETUP.md           # CUDA/GPU setup instructions
@@ -316,4 +316,3 @@ If you use this code in your research, please cite:
 - HAM10000 dataset: Tschandl, P. et al. (2018). _The HAM10000 dataset, a large collection of multi-source dermatoscopic images of common pigmented skin lesions._ Scientific Data, 5, 180161.
 
 .\venv\Scripts\activate; streamlit run server.py
-   

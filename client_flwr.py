@@ -10,9 +10,9 @@ This file defines how each client:
 4. Encrypts the trained weights before sending to server
 
 DATASET: HAM10000 Skin Lesion Classification (7 classes)
-  - Client 0 (Hospital A): nv, mel — Melanocytic focus
-  - Client 1 (Hospital B): bkl, bcc, akiec — Keratosis & Carcinoma
-  - Client 2 (Hospital C): vasc, df — Vascular & Fibroma
+  - Client 0 (Hospital A): All 7 classes (IID)
+  - Client 1 (Hospital B): All 7 classes (IID)
+  - Client 2 (Hospital C): All 7 classes (IID)
 
 SECURITY FEATURES (3 layers):
 - Gradient Clipping: Limits how much training changes the model (prevents data leakage)
@@ -28,7 +28,7 @@ import torch.nn.utils as nn_utils
 import numpy as np
 import flwr as fl
 from collections import OrderedDict
-from multi_modal_model import MultiModalFederatedModel
+from hybrid_model import HybridModel
 from quantum_e91 import generate_shared_key, encrypt_parameters, verify_entanglement
 from data_setup import get_client_dataset
 
@@ -83,7 +83,7 @@ class FLQCClient(fl.client.NumPyClient):
     def __init__(self, cid: str, device: torch.device, total_clients: int = 3):
         self.cid = cid
         self.device = device
-        self.model = MultiModalFederatedModel().to(self.device)
+        self.model = HybridModel().to(self.device)
         self.train_loader = self._load_data(int(cid), total_clients)
         
         # Security state tracking (for UI display)
