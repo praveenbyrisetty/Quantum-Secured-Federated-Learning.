@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Zap, Server, CheckCircle, AlertTriangle, Lock, Unlock, EyeOff } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, Zap, Server, CheckCircle, AlertTriangle, Lock, Unlock, EyeOff, Key } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 
 // Injecting Database mock since we removed it from App imports
@@ -241,6 +241,72 @@ export const LocalTrainingSlide = () => {
 export const QuantumTransportSlide = () => {
   const [hacked, setHacked] = useState(false);
   const [qStep, setQStep] = useState(0); 
+  const [showKey, setShowKey] = useState(false);
+  const [vizStage, setVizStage] = useState(0); // 0=ready,1=encrypting,2=transmitting,3=decrypted
+  const [vizPlaying, setVizPlaying] = useState(false);
+  const vizTimer = useRef(null);
+
+  const sampleKey = "bvMZb7xvFeoJEB6Digw1kLT69OjMT0_SnX5nGooy2c0="; // 32-byte Fernet key (base64url)
+  const sampleCipher = "gAAAAABlZ6qSe0Z7QwAAAFoxuPM3nITtUHr3pOTdJdC2xV7ySdE68JZTw5nEipZ9uVfsqEX13ZtQx2wa1Hdwg9A3gnYJ2T9m0Q==";
+  const plaintextGradients = `{
+  "round": 7,
+  "dataset": "HAM10000_patchset_B",
+  "grads": [0.122, -0.331, 0.044, 0.910, -0.287]
+}`;
+
+  const maskedKey = showKey ? sampleKey : "*".repeat(sampleKey.length);
+  const cipherLines = sampleCipher.match(/.{1,44}/g) || [sampleCipher];
+
+  const startVisualizer = () => {
+    if (vizPlaying) return;
+    setVizPlaying(true);
+    setVizStage(1);
+  };
+
+  useEffect(() => {
+    if (!vizPlaying) return;
+    if (vizTimer.current) clearTimeout(vizTimer.current);
+
+    if (vizStage === 1) {
+      vizTimer.current = setTimeout(() => setVizStage(2), 1200);
+    } else if (vizStage === 2) {
+      vizTimer.current = setTimeout(() => setVizStage(3), 1200);
+    } else if (vizStage === 3) {
+      vizTimer.current = setTimeout(() => {
+        setVizStage(0);
+        setVizPlaying(false);
+      }, 900);
+    }
+
+    return () => {
+      if (vizTimer.current) clearTimeout(vizTimer.current);
+    };
+  }, [vizStage, vizPlaying]);
+
+  const stageMeta = [
+    { key: 'entangle', title: 'Photon Entanglement', desc: 'Mint paired Bell states across the link.', icon: <Zap size={18} /> },
+    { key: 'chsh', title: 'CHSH Integrity Test', desc: 'Detect eavesdroppers via quantum score.', icon: <Shield size={18} /> },
+    { key: 'fernet', title: 'Fernet Lock & Uplink', desc: 'Derive AES-128 key and push gradients.', icon: <Lock size={18} /> },
+  ];
+
+  const getStageStatus = (idx) => {
+    if (hacked) {
+      if (idx === 0) return qStep === 0 ? 'active' : 'complete';
+      if (idx === 1) return 'breached';
+      return 'blocked';
+    }
+    if (qStep > idx || (qStep === 2 && idx === 2)) return 'complete';
+    if (qStep === idx) return 'active';
+    return 'pending';
+  };
+
+  const statusStyles = {
+    pending:  { label: 'Pending',     color: 'var(--text-muted)',    fill: '15%', bar: 'rgba(255,255,255,0.08)' },
+    active:   { label: 'In Progress', color: 'var(--accent-cyan)',   fill: '65%', bar: 'rgba(0,240,255,0.12)' },
+    complete: { label: 'Secured',     color: 'var(--accent-emerald)',fill: '100%',bar: 'rgba(16,185,129,0.15)' },
+    breached: { label: 'Intercepted', color: 'var(--accent-rose)',   fill: '100%',bar: 'rgba(244,63,94,0.18)' },
+    blocked:  { label: 'Aborted',     color: 'var(--accent-rose)',   fill: '30%', bar: 'rgba(244,63,94,0.12)' },
+  };
 
   const handleNextStep = () => {
     if (qStep < 2) setQStep(qStep + 1);
@@ -346,20 +412,37 @@ export const QuantumTransportSlide = () => {
               <div style={{ marginTop: '0.5rem', fontWeight: 'bold' }}>Hospital Client</div>
             </div>
             
-            <div style={{ flex: 1, padding: '0 2rem', position: 'relative', zIndex: 1 }}>
-              {hacked ? (
-                 <div style={{ height: '4px', background: 'var(--accent-rose)', width: '100%' }} />
-              ) : qStep === 0 ? (
-                 <div style={{ height: '2px', background: 'var(--border-glass)', width: '100%', borderStyle: 'dashed' }} />
-              ) : (
-                 <div className="fiber-optic-cable"><div className={qStep === 2 ? "fiber-optic-pulse" : "fiber-optic-pulse-slow"} /></div>
+            <div style={{ flex: 1, padding: '0 2rem', position: 'relative', zIndex: 1, height: '60px', display: 'flex', alignItems: 'center' }}>
+              <style>{`
+                @keyframes firePhotonsL { 0% { left: 50%; opacity: 1; transform: scale(1); } 100% { left: 0%; opacity: 0; transform: scale(0.5); } }
+                @keyframes firePhotonsR { 0% { left: 50%; opacity: 1; transform: scale(1); } 100% { left: 100%; opacity: 0; transform: scale(0.5); } }
+                @keyframes dataJump { 0% { left: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+                @keyframes hackDrop { 0% { top: -50px; opacity: 0; } 100% { top: 50%; opacity: 1; } }
+              `}</style>
+              <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '2px', background: hacked ? 'var(--accent-rose)' : 'var(--border-glass)', borderStyle: qStep === 0 ? 'dashed' : 'solid' }} />
+              {qStep === 1 && !hacked && (
+                <>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: '12px', height: '12px', background: 'var(--accent-cyan)', borderRadius: '50%', transform: 'translate(-50%, -50%)', boxShadow: '0 0 15px var(--accent-cyan)' }} />
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: '12px', height: '12px', background: '#fff', borderRadius: '50%', marginTop: '-6px', marginLeft: '-6px', animation: 'firePhotonsL 1.5s infinite ease-out', boxShadow: '0 0 10px #fff' }} />
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: '12px', height: '12px', background: '#fff', borderRadius: '50%', marginTop: '-6px', marginLeft: '-6px', animation: 'firePhotonsR 1.5s infinite ease-out', boxShadow: '0 0 10px #fff' }} />
+                </>
               )}
-              
+              {qStep === 2 && !hacked && (
+                <div style={{ position: 'absolute', top: '50%', left: '0%', transform: 'translateY(-50%)', background: 'var(--accent-emerald)', color: '#000', padding: '0.2rem 0.6rem', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.75rem', animation: 'dataJump 2s infinite ease-in-out', zIndex: 5, boxShadow: '0 0 15px var(--accent-emerald)' }}>
+                  🔒 AES-DATA
+                </div>
+              )}
+              {hacked && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#000', border: '2px solid var(--accent-rose)', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'hackDrop 0.3s forwards', zIndex: 10, boxShadow: '0 0 20px var(--accent-rose)' }}>
+                  <span style={{color: 'var(--accent-rose)', fontSize: '1.2rem', fontWeight: 'bold'}}>!</span>
+                </div>
+              )}
               <div style={{ 
-                position: 'absolute', top: '-35px', left: '50%', transform: 'translateX(-50%)',
+                position: 'absolute', top: '-40px', left: '50%', transform: 'translateX(-50%)',
                 color: hacked ? 'var(--accent-rose)' : qStep === 0 ? 'var(--text-muted)' : 'var(--accent-cyan)', 
-                fontWeight: 'bold', background: 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px',
-                border: hacked ? '1px solid var(--accent-rose)' : qStep > 0 ? '1px solid var(--accent-cyan)' : '1px solid var(--border-glass)'
+                fontWeight: 'bold', background: 'rgba(0,0,0,0.8)', padding: '0.4rem 1rem', borderRadius: '20px',
+                border: hacked ? '1px solid var(--accent-rose)' : qStep > 0 ? '1px solid var(--accent-cyan)' : '1px solid var(--border-glass)',
+                whiteSpace: 'nowrap', zIndex: 20
               }}>
                 {hacked ? 'X COLLAPSED (1.41)' : qStep === 0 ? 'Idle' : qStep === 1 ? 'CHSH: 2.82 (Safe)' : 'AES-128 Transmitting 🔒'}
               </div>
@@ -371,6 +454,131 @@ export const QuantumTransportSlide = () => {
             </div>
           </div>
 
+          {/* Stage-by-stage monitor */}
+          <div style={{ 
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', 
+            gap: '1rem', marginBottom: '1.5rem'
+          }}>
+            {stageMeta.map((stage, idx) => {
+              const statusKey = getStageStatus(idx);
+              const meta = statusStyles[statusKey];
+              return (
+                <div key={stage.key} className="glass-panel" style={{ 
+                  padding: '1rem 1.2rem', border: `1px solid ${meta.color}`, 
+                  boxShadow: statusKey === 'active' ? '0 0 18px rgba(0,240,255,0.15)' : 'none',
+                  position: 'relative', overflow: 'hidden'
+                }}>
+                  {statusKey === 'active' && <div className="stage-stripes" />}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <div style={{ 
+                        width: '34px', height: '34px', borderRadius: '10px', 
+                        background: 'rgba(255,255,255,0.06)', 
+                        display: 'grid', placeItems: 'center' 
+                      }}>
+                        {stage.icon}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: '600' }}>{stage.title}</div>
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{stage.desc}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ 
+                      padding: '0.35rem 0.6rem', borderRadius: '999px', 
+                      background: meta.bar, color: meta.color, fontSize: '0.75rem', 
+                      fontWeight: '700'
+                    }}>
+                      {meta.label}
+                    </div>
+                  </div>
+
+                  <div style={{ 
+                    marginTop: '0.8rem', height: '6px', borderRadius: '999px', 
+                    background: 'rgba(255,255,255,0.06)', overflow: 'hidden' 
+                  }}>
+                    <div style={{ 
+                      width: meta.fill, height: '100%', background: meta.color, 
+                      boxShadow: `0 0 12px ${meta.color}`, transition: 'width 0.4s ease' 
+                    }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Encryption walkthrough */}
+          <div className="glass-panel" style={{ padding: '1.2rem 1.25rem', marginBottom: '1.25rem', display: 'grid', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+              <div className="glass-panel" style={{ padding: '1rem', border: '1px dashed var(--border-glass)', background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, marginBottom: '0.6rem' }}>
+                  <Server size={18} /> Plaintext before lock
+                </div>
+                <pre style={{
+                  margin: 0, padding: '0.8rem', background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
+                  border: '1px solid var(--border-glass)', fontFamily: 'monospace', fontSize: '0.88rem', color: 'var(--text-primary)',
+                  whiteSpace: 'pre-wrap'
+                }}>{plaintextGradients}</pre>
+                <div style={{ marginTop: '0.6rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                  This is the gradient slice leaving Hospital Client B for round 7.
+                </div>
+              </div>
+
+              <div className="glass-panel" style={{ padding: '1rem', border: '1px dashed var(--border-glass)', background: 'rgba(0,0,0,0.4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, marginBottom: '0.6rem' }}>
+                  <Key size={18} color="var(--accent-cyan)" /> Fernet key + crypto modes
+                </div>
+                <div style={{ 
+                  fontFamily: 'monospace', background: 'rgba(255,255,255,0.05)', padding: '0.75rem', borderRadius: '8px',
+                  border: '1px solid var(--border-glass)', color: 'var(--text-primary)', letterSpacing: '0.5px'
+                }}>{maskedKey}</div>
+                <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.6rem', flexWrap: 'wrap' }}>
+                  <button 
+                    onClick={() => setShowKey(!showKey)}
+                    style={{
+                      padding: '0.55rem 1rem', borderRadius: '8px', border: '1px solid var(--border-glass)',
+                      background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 600
+                    }}
+                  >
+                    {showKey ? 'Hide Key' : 'Reveal Key'}
+                  </button>
+                  <div style={{ 
+                    padding: '0.55rem 1rem', borderRadius: '8px', border: '1px dashed var(--border-glass)',
+                    background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)', fontSize: '0.9rem'
+                  }}>
+                    Derived from CHSH score → HKDF → Fernet (AES-128-CBC + HMAC-SHA256)
+                  </div>
+                </div>
+                <div style={{ marginTop: '0.7rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.4rem' }}>
+                  <div className="glass-pill" style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem' }}>IV: random 16 bytes</div>
+                  <div className="glass-pill" style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem' }}>Cipher: AES-128-CBC</div>
+                  <div className="glass-pill" style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem' }}>Tag: HMAC-SHA256</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1rem', border: '1px dashed var(--border-glass)', background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 700, marginBottom: '0.6rem' }}>
+                <Lock size={18} color="var(--accent-emerald)" /> Ciphertext the server receives
+              </div>
+              <div style={{ fontFamily: 'monospace', fontSize: '0.9rem', lineHeight: 1.5, color: 'var(--accent-cyan)', wordBreak: 'break-all' }}>
+                {cipherLines.map((line, i) => <div key={i}>{line}</div>)}
+              </div>
+              <div style={{ marginTop: '0.6rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                Layout: version | IV | AES-CBC ciphertext | HMAC tag. Flip one bit → tag fails → decryption aborts.
+              </div>
+            </div>
+
+            <div className="glass-panel" style={{ padding: '1rem', border: '1px dashed var(--border-glass)', background: 'rgba(0,0,0,0.55)' }}>
+              <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>Human-readable trace</div>
+              <ol style={{ margin: 0, paddingLeft: '1.1rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                <li>CHSH test passes; shared randomness feeds HKDF to mint a 32-byte Fernet key.</li>
+                <li>Fernet chooses a fresh IV, AES-128-CBC encrypts the gradient blob above.</li>
+                <li>HMAC-SHA256 signs (version | IV | ciphertext) to catch tampering.</li>
+                <li>Server verifies the tag, then decrypts back to the exact JSON gradients.</li>
+              </ol>
+            </div>
+          </div>
           {qStep === 2 && !hacked && (
             <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--accent-emerald)', borderRadius: '4px', marginBottom: '1rem', textAlign: 'center' }}>
               <div style={{ color: 'var(--accent-emerald)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>FERNET SECURE PAYLOAD (AES-128-CBC + HMAC-SHA256)</div>
@@ -384,6 +592,96 @@ export const QuantumTransportSlide = () => {
             {logs.map((log, i) => (
               <div key={i} style={{ marginBottom: '0.5rem' }}>{log}</div>
             ))}
+          </div>
+
+          {/* Live encrypt/decrypt visualizer */}
+          <div className="glass-panel" style={{ marginTop: '1.2rem', padding: '1.25rem', border: '1px solid var(--border-glass)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '1rem' }}>Live Encrypt → Transmit → Decrypt Visualizer</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                  Watch the gradient blob get locked, shipped, and restored in real time.
+                </div>
+              </div>
+              <button 
+                onClick={startVisualizer}
+                disabled={vizPlaying}
+                style={{
+                  padding: '0.75rem 1.4rem', borderRadius: '10px', border: '1px solid var(--border-glass)',
+                  background: vizPlaying ? 'rgba(255,255,255,0.08)' : 'var(--accent-cyan)', 
+                  color: vizPlaying ? 'var(--text-muted)' : '#000', 
+                  cursor: vizPlaying ? 'not-allowed' : 'pointer',
+                  fontWeight: 700,
+                  boxShadow: vizPlaying ? 'none' : '0 0 14px rgba(0,240,255,0.35)'
+                }}
+              >
+                {vizPlaying ? 'Running...' : 'Run Encrypt→Decrypt'}
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+              
+              {/* Plain side */}
+              <div className="glass-panel" style={{ padding: '1rem', border: '1px dashed var(--border-glass)' }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Plaintext (hospital)</div>
+                <pre style={{
+                  margin: 0, padding: '0.7rem', background: 'rgba(0,0,0,0.6)', borderRadius: '8px',
+                  border: '1px solid var(--border-glass)', fontFamily: 'monospace', fontSize: '0.82rem', color: 'var(--text-primary)',
+                  whiteSpace: 'pre-wrap', minHeight: '120px'
+                }}>{plaintextGradients}</pre>
+                <div style={{ marginTop: '0.6rem', color: vizStage >= 3 ? 'var(--accent-emerald)' : 'var(--text-muted)', fontWeight: 600 }}>
+                  {vizStage >= 3 ? 'Decrypted and verified ✅' : 'Awaiting delivery...'}
+                </div>
+              </div>
+
+              {/* Middle rail */}
+              <div className="glass-panel" style={{ padding: '1rem', position: 'relative', overflow: 'hidden', border: '1px dashed var(--border-glass)' }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>Crypto rail</div>
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.8rem' }}>
+                  <div className="glass-pill" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem', background: 'rgba(0,240,255,0.08)' }}>AES-128-CBC</div>
+                  <div className="glass-pill" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem', background: 'rgba(16,185,129,0.1)' }}>HMAC-SHA256</div>
+                  <div className="glass-pill" style={{ padding: '0.45rem 0.85rem', fontSize: '0.85rem', background: 'rgba(255,255,255,0.08)' }}>IV + Tag bundled</div>
+                </div>
+
+                <div style={{ position: 'relative', height: '8px', background: 'rgba(255,255,255,0.07)', borderRadius: '12px', margin: '1.2rem 0' }}>
+                  <div style={{ 
+                    position: 'absolute', top: '-10px', left: `${[5,30,68,92][vizStage]}%`, 
+                    width: '24px', height: '24px', borderRadius: '50%', 
+                    background: vizStage === 0 ? 'var(--border-glass)' : vizStage === 3 ? 'var(--accent-emerald)' : 'var(--accent-cyan)',
+                    boxShadow: vizStage === 0 ? 'none' : '0 0 12px rgba(0,240,255,0.4)',
+                    border: '2px solid rgba(0,0,0,0.5)',
+                    transform: 'translateX(-50%)',
+                    transition: 'left 0.9s ease, background 0.3s ease, box-shadow 0.3s ease'
+                  }} />
+                  <div style={{ 
+                    position: 'absolute', left: '0', top: 0, height: '100%', 
+                    width: `${[5,30,68,92][vizStage]}%`, 
+                    background: 'linear-gradient(90deg, rgba(0,240,255,0.2), rgba(16,185,129,0.2))',
+                    transition: 'width 0.9s ease'
+                  }} />
+                </div>
+
+                <div style={{ fontFamily: 'monospace', fontSize: '0.86rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  {vizStage === 0 && "Idle. Click run to generate IV + key material."}
+                  {vizStage === 1 && "Encrypting with AES-128-CBC and appending IV."}
+                  {vizStage === 2 && "Signing packet with HMAC-SHA256, streaming down fiber."}
+                  {vizStage === 3 && "HMAC verified. Ciphertext decrypted back to gradients."}
+                </div>
+              </div>
+
+              {/* Cipher side */}
+              <div className="glass-panel" style={{ padding: '1rem', border: '1px dashed var(--border-glass)' }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Ciphertext (wire)</div>
+                <div style={{ fontFamily: 'monospace', fontSize: '0.85rem', lineHeight: 1.45, color: 'var(--accent-cyan)', wordBreak: 'break-all', minHeight: '120px' }}>
+                  {cipherLines.map((line, i) => (
+                    <div key={i} style={{ opacity: vizStage === 0 ? 0.35 : 1 }}>{line}</div>
+                  ))}
+                </div>
+                <div style={{ marginTop: '0.6rem', color: vizStage >= 2 ? 'var(--accent-cyan)' : 'var(--text-muted)', fontWeight: 600 }}>
+                  {vizStage >= 2 ? 'In-flight packet (tamper-evident).' : 'Waiting for encryption...'}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

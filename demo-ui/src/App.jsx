@@ -7,6 +7,8 @@ import {
   SecureAggregationSlide, 
   FinalEvaluationSlide 
 } from './components/Slides';
+import { FullPipelineJourney } from './components/FullPipelineJourney';
+import { QuantumTransportSimulator } from './components/QuantumTransportSimulator';
 
 const App = () => {
   const [activeStep, setActiveStep] = useState(0);
@@ -14,9 +16,10 @@ const App = () => {
   const steps = [
     { title: 'Layer 0: Core Hybrid Architecture', component: <DataDistributionSlide /> },
     { title: 'Layer 1: Local Differential Privacy', component: <LocalTrainingSlide /> },
-    { title: 'Layer 2: Quantum E91 Encryption', component: <QuantumTransportSlide /> },
+    { title: 'Layer 2: Quantum E91 Encryption', component: <QuantumTransportSimulator /> },
     { title: 'Layer 3: Krum Defensive Aggregation', component: <SecureAggregationSlide /> },
-    { title: 'Layer 4: Final Security Evaluation', component: <FinalEvaluationSlide /> }
+    { title: 'Layer 4: Final Security Evaluation', component: <FinalEvaluationSlide /> },
+    { title: 'Layer 5: Full Lifecycle Security Simulation', component: <FullPipelineJourney /> }
   ];
 
   const handleNext = () => {

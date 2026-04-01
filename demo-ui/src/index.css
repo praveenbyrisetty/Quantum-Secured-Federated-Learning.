@@ -107,6 +107,20 @@ p {
   animation: dataFlow 1.5s infinite linear;
 }
 
+@keyframes stageStripesMove {
+  from { background-position: 0 0; }
+  to { background-position: 40px 0; }
+}
+
+.stage-stripes {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(45deg, rgba(0, 240, 255, 0.08) 0px, rgba(0, 240, 255, 0.08) 10px, transparent 10px, transparent 20px);
+  animation: stageStripesMove 1.2s linear infinite;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
 /* Layout utilities */
 .flex-center {
   display: flex;
