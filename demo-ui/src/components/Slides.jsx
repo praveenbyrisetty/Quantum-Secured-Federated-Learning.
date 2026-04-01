@@ -696,63 +696,124 @@ export const SecureAggregationSlide = () => {
   const [step, setStep] = useState(0);
 
   const hospitals = [
-    { id: 'A', status: 'Honest', norm: 1200, color: 'var(--accent-cyan)' },
-    { id: 'B', status: 'Honest', norm: 1350, color: 'var(--accent-emerald)' },
-    { id: 'C', status: 'POISONED DATA', norm: 8500, color: 'var(--accent-rose)' },
+    { id: 'A', status: 'Honest', norm: 1200, gradExample: [0.12, -0.05, 0.44], color: 'var(--accent-cyan)' },
+    { id: 'B', status: 'Honest', norm: 1350, gradExample: [0.15, -0.03, 0.41], color: 'var(--accent-emerald)' },
+    { id: 'C', status: 'POISONED DATA', norm: 8500, gradExample: [0.99, -0.99, 2.50], color: 'var(--accent-rose)' },
   ];
+
+  const handleNext = () => setStep(s => (s + 1) % 5);
 
   return (
     <div className="animate-slide-up" style={{ padding: '0 2rem' }}>
-      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 3: Krum Defensive Aggregation</h2>
-      <p style={{ fontSize: '1.2rem', marginBottom: '2rem', maxWidth: '800px' }}>
-        When the encrypted vectors arrive, the central server runs a specialized <strong>Hybrid Krum + Trimmed Mean Protocol</strong>. It measures cosine similarities to actively isolate and mathematically purge compromised networks.
+      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 3: Hybrid Krum + Trimmed Mean Aggregation</h2>
+      <p style={{ fontSize: '1.2rem', marginBottom: '2rem', maxWidth: '850px' }}>
+        When encrypted vectors arrive, the central server runs a specialized <strong>2-Stage Hybrid Protocol</strong>. It first uses <strong>Multi-Krum</strong> to mathematically filter out maliciously poisoned networks, then applies <strong>Trimmed Mean</strong> to robustly aggregate the surviving models.
       </p>
 
+      {/* Hospital Nodes Status */}
       <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
-        {hospitals.map((h, i) => (
+        {hospitals.map((h) => (
           <div key={h.id} className="glass-panel" style={{ 
-            flex: 1, padding: '1.5rem', textAlign: 'center',
-            opacity: (step > 1 && h.id === 'C') ? 0.3 : 1,
-            border: (step > 1 && h.id === 'C') ? '1px solid var(--accent-rose)' : '1px solid var(--border-glass)',
+            flex: 1, padding: '1.5rem', textAlign: 'center', position: 'relative', overflow: 'hidden',
+            opacity: (step >= 2 && h.id === 'C') ? 0.3 : 1,
+            border: (step >= 2 && h.id === 'C') ? '1px solid var(--accent-rose)' : '1px solid var(--border-glass)',
             transition: 'all 0.5s'
           }}>
+             {step >= 2 && h.id === 'C' && (
+               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', rotate: '-15deg', border: '3px solid var(--accent-rose)', color: 'var(--accent-rose)', padding: '0.2rem 0.5rem', fontWeight: 'bold', fontSize: '1.5rem', zIndex: 10 }}>REJECTED</div>
+             )}
              <h3 style={{color: h.color}}>Network {h.id}</h3>
              <div style={{ marginTop: '1rem', fontSize: '2rem', fontWeight: 'bold' }}>{h.norm}</div>
-             <div style={{ color: 'var(--text-muted)' }}>Transmission Norm</div>
+             <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Transmission Norm ||g||</div>
              
+             {/* Gradient array representation */}
+             <div style={{ marginTop: '0.8rem', fontFamily: 'monospace', fontSize: '0.9rem', color: h.color, background: 'rgba(255,255,255,0.05)', padding: '0.4rem', borderRadius: '4px' }}>
+               [{h.gradExample.join(', ')}]
+             </div>
+
              {step > 0 && <div style={{ 
-               marginTop: '1rem', padding: '0.5rem', borderRadius: '4px',
-               background: h.id === 'C' ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)' 
+               marginTop: '1rem', padding: '0.5rem', borderRadius: '4px', fontSize: '0.9rem', fontWeight: 'bold',
+               background: h.id === 'C' && step >= 2 ? 'rgba(244,63,94,0.1)' : step === 1 ? 'rgba(255,255,255,0.05)' : 'rgba(16,185,129,0.1)',
+               color: h.id === 'C' && step >= 2 ? 'var(--accent-rose)' : step === 1 ? 'var(--text-primary)' : 'var(--accent-emerald)'
              }}>
-               {h.id === 'C' ? 'Malicious Deviation Flagged' : 'Honest Trajectory Verified'}
+               {step === 1 ? 'Distances Calculating...' : 
+                h.id === 'C' ? 'Poison Outlier Quarantined' : 'Krum Verification Passed'}
              </div>}
           </div>
         ))}
       </div>
 
-      <div className="glass-panel" style={{ padding: '2rem', textAlign: 'center' }}>
-        <button 
-           onClick={() => setStep((s) => (s + 1) % 4)}
-           style={{
-             padding: '1rem 2rem', background: 'var(--text-primary)', 
-             color: '#000', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer',
-             marginBottom: '2rem'
-           }}
-        >
-           {step === 0 ? "1. Execute Trajectory Calculations" : 
-            step === 1 ? "2. Trigger Hybrid Krum Protocol" : 
-            step === 2 ? "3. Finalize Safe Server Aggregation" : "Reset Terminal"}
-        </button>
+      {/* Control Panel */}
+      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
+         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+           <h3 style={{ margin: 0 }}>Hybrid Aggregation Sequence</h3>
+           <button 
+             onClick={handleNext}
+             style={{
+               padding: '0.8rem 1.5rem', background: 'var(--accent-cyan)', 
+               color: '#000', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer',
+               boxShadow: '0 0 15px rgba(0,240,255,0.4)', transition: 'all 0.3s'
+             }}
+           >
+             {step === 0 ? "1. Execute Trajectory Calculations" : 
+              step === 1 ? "2. Trigger Multi-Krum Protocol" : 
+              step === 2 ? "3. Apply Trimmed Mean Protocol" : 
+              step === 3 ? "4. Finalize Global Update Component" : "Reset Defense Phase"}
+           </button>
+         </div>
 
-        <div style={{ 
-          padding: '2rem', background: 'rgba(0,0,0,0.5)', borderRadius: '8px', 
-          border: '1px dashed var(--accent-cyan)', fontSize: '1.5rem', fontWeight: 'bold'
-        }}>
-           {step === 0 ? "Awaiting Packets..." : 
-            step === 1 ? "Analyzing Cosine Vector Similarities..." : 
-            step >= 2 ? <span style={{color: 'var(--accent-emerald)'}}><CheckCircle style={{verticalAlign: 'bottom'}}/> Poisoned Network C Purged. Safe Hybrid Consensus Reached.</span> : ""}
-        </div>
+         {/* Protocol Visualizer */}
+         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: '1.5rem' }}>
+           
+           {/* Multi-Krum Panel */}
+           <div style={{ 
+             padding: '1.5rem', borderRadius: '8px', border: step >= 1 ? '1px solid var(--accent-cyan)' : '1px dashed var(--border-glass)',
+             background: step >= 1 ? 'rgba(0,240,255,0.05)' : 'rgba(0,0,0,0.3)', transition: 'all 0.3s'
+           }}>
+             <h4 style={{ color: step >= 1 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Stage 1: Multi-Krum Filtering</h4>
+             <ul style={{ paddingLeft: '1.2rem', fontSize: '0.95rem', color: 'var(--text-muted)', lineHeight: '1.6', marginTop: '1rem' }}>
+               <li style={{ color: step >= 1 ? 'var(--accent-cyan)' : '' }}>Calculate pairwise spatial distances between all 3 networks.</li>
+               <li style={{ color: step >= 2 ? 'var(--accent-cyan)' : '' }}>Score networks based on closest honest neighbors.</li>
+               <li style={{ color: step >= 2 ? 'var(--text-primary)' : '', fontWeight: step >= 2 ? 'bold' : 'normal' }}>
+                 Networks A & B verified. <br />
+                 <span style={{color: step >= 2 ? 'var(--accent-rose)' : ''}}>Network C is permanently purged (Distance Anomaly).</span>
+               </li>
+             </ul>
+           </div>
+
+           {/* Trimmed Mean Panel */}
+           <div style={{ 
+             padding: '1.5rem', borderRadius: '8px', border: step >= 3 ? '1px solid var(--accent-emerald)' : '1px dashed var(--border-glass)',
+             background: step >= 3 ? 'rgba(16,185,129,0.05)' : 'rgba(0,0,0,0.3)', transition: 'all 0.3s'
+           }}>
+             <h4 style={{ color: step >= 3 ? 'var(--text-primary)' : 'var(--text-muted)' }}>Stage 2: Trimmed Mean Averaging</h4>
+             <ul style={{ paddingLeft: '1.2rem', fontSize: '0.95rem', color: 'var(--text-muted)', lineHeight: '1.6', margin: '1rem 0' }}>
+               <li style={{ color: step >= 3 ? 'var(--accent-emerald)' : '' }}>Analyze remaining vectors (A & B) dimension-by-dimension.</li>
+               <li style={{ color: step >= 3 ? 'var(--accent-emerald)' : '' }}>Discard upper/lower 10% extreme values.</li>
+               <li style={{ color: step >= 3 ? 'var(--accent-emerald)' : '' }}>Compute mean of remaining parameters.</li>
+             </ul>
+             
+             {step >= 3 && (
+                 <div className="animate-slide-up" style={{ 
+                   marginTop: '1rem', fontFamily: 'monospace', padding: '0.8rem', 
+                   background: 'rgba(0,0,0,0.5)', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)',
+                   fontSize: '0.9rem'
+                 }}>
+                   <div>A: [{hospitals[0].gradExample.join(', ')}]</div>
+                   <div style={{paddingBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem'}}>B: [{hospitals[1].gradExample.join(', ')}]</div>
+                   <div style={{color: 'var(--accent-emerald)', fontWeight: 'bold'}}>Avg: [0.135, -0.040, 0.425]</div>
+                 </div>
+             )}
+           </div>
+         </div>
       </div>
+      
+      {step === 4 && (
+        <div className="animate-slide-up" style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--accent-emerald)', borderRadius: '8px', textAlign: 'center', color: 'var(--accent-emerald)', fontWeight: 'bold', fontSize: '1.2rem' }}>
+          <CheckCircle size={24} style={{ verticalAlign: 'middle', marginRight: '10px' }} />
+          Final Layer Successfully Aggregated. Server Model is Upgraded!
+        </div>
+      )}
     </div>
   );
 };
