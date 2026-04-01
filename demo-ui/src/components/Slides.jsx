@@ -240,17 +240,36 @@ export const LocalTrainingSlide = () => {
 // ==========================================
 export const QuantumTransportSlide = () => {
   const [hacked, setHacked] = useState(false);
-  const [logs, setLogs] = useState([]);
-  
-  useEffect(() => {
-    let timer;
-    if (!hacked) {
-      setLogs(["[SYSTEM] Hybrid Quantum Protocol Initiated...", "[SYSTEM] Executing E91 Entanglement...", "[CHSH TEST] Score = 2.82 >> THRESHOLD >> SAFE", "[SYSTEM] AES-128 Encryption Active. Data Transmitting."]);
-    } else {
-      setLogs(["[SYSTEM] Foreign node detected on fiber line.", "⚠️ [WARNING] Quantum Wavefunction Collapse!", "⚠️ [CHSH TEST] Score dropped to 1.41 < 2.0!", "🚨 [CRITICAL ALERT] EAVESDROPPER DETECTED.", "🚨 [CRITICAL ALERT] UPLINK TERMINATED."]);
-    }
-    return () => clearInterval(timer);
-  }, [hacked]);
+  const [qStep, setQStep] = useState(0); 
+
+  const handleNextStep = () => {
+    if (qStep < 2) setQStep(qStep + 1);
+  };
+
+  const resetTarget = () => {
+    setHacked(false);
+    setQStep(0);
+  };
+
+  const logs = hacked ? [
+      "[SYSTEM] Foreign node detected on fiber optic line.", 
+      "⚠️ [WARNING] Quantum Wavefunction Collapse!", 
+      "⚠️ [CHSH TEST] Score dropped to 1.41 < 2.0!", 
+      "🚨 [CRITICAL ALERT] EAVESDROPPER DETECTED.", 
+      "🚨 [CRITICAL ALERT] UPLINK TERMINATED."
+    ] : qStep === 0 ? [
+      "[SYSTEM] Awaiting Quantum Initialization..."
+    ] : qStep === 1 ? [
+      "[SYSTEM] Hybrid Quantum Protocol Initiated...", 
+      "[SYSTEM] Executing E91 Entanglement...", 
+      "[CHSH TEST] Score = 2.82 >> THRESHOLD >> PURE"
+    ] : [
+      "[SYSTEM] Hybrid Quantum Protocol Initiated...", 
+      "[SYSTEM] Executing E91 Entanglement...", 
+      "✓ [CHSH TEST] Score = 2.82 >> THRESHOLD >> PURE",
+      "🔒 [CRYPTO] Wrapping Gradients in Fernet (AES-128-CBC)...",
+      "🟢 [CRYPTO] Encrypted Payload securely transmitting."
+    ];
 
   return (
     <div className="animate-slide-up" style={{ padding: '0 2rem' }}>
@@ -272,56 +291,101 @@ export const QuantumTransportSlide = () => {
         </div>
 
         <div className="glass-panel" style={{ flex: 1, padding: '1.5rem', borderLeft: '4px solid var(--accent-emerald)' }}>
-          <h4 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', marginBottom: '0.8rem' }}>Step 3: AES Encryption Lock</h4>
-          <p style={{ fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>Because the CHSH test passed (&gt; 2.0), the framework uses the measured photons to mathematically generate an unbreakable <strong>Encryption Key</strong>, locking the Medical Gradients right before they are transmitted.</p>
+          <h4 style={{ color: 'var(--text-primary)', fontSize: '1.1rem', marginBottom: '0.8rem' }}>Step 3: Fernet (AES) Encryption Lock</h4>
+          <p style={{ fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>Because the CHSH test passed (&gt; 2.0), the framework uses the measured photons to mathematically generate an unbreakable <strong>Fernet AES-128 Token</strong>, locking the Medical Gradients right before they are transmitted.</p>
         </div>
       </div>
 
-      <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
-        <div className="flex-between" style={{ marginBottom: '2rem' }}>
-          <div style={{ textAlign: 'center' }}>
-            <Database size={48} color="var(--text-primary)" />
-            <div style={{ marginTop: '0.5rem' }}>Hospital Client</div>
-          </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+        
+        {/* INTERACTIVE CONTROLS */}
+        <div className="glass-panel" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '1.5rem' }}>
+          <h3 style={{ marginBottom: '1rem' }}>Quantum Sequence Controls</h3>
           
-          <div style={{ flex: 1, padding: '0 2rem', position: 'relative' }}>
-            {hacked ? (
-               <div style={{ height: '4px', background: 'var(--accent-rose)', width: '100%' }} />
-            ) : (
-               <div className="fiber-optic-cable"><div className="fiber-optic-pulse" /></div>
-            )}
-            <div style={{ 
-              position: 'absolute', top: '-30px', left: '50%', transform: 'translateX(-50%)',
-              color: hacked ? 'var(--accent-rose)' : 'var(--accent-cyan)', fontWeight: 'bold'
-            }}>
-              {hacked ? 'CONNECTION SEVERED' : 'CHSH: 2.82 (SECURE)'}
+          <button 
+             onClick={handleNextStep}
+             disabled={qStep >= 2 || hacked}
+             style={{
+               width: '100%', padding: '1rem', background: (qStep >= 2 || hacked) ? 'var(--bg-card)' : 'var(--accent-cyan)', 
+               color: (qStep >= 2 || hacked) ? 'var(--text-muted)' : '#000', 
+               border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: (qStep >= 2 || hacked) ? 'not-allowed' : 'pointer',
+               boxShadow: (qStep < 2 && !hacked) ? '0 0 15px rgba(0,240,255,0.4)' : 'none', transition: 'all 0.3s'
+             }}
+          >
+             {qStep === 0 ? '1. Initialize Photon Entanglement' : qStep === 1 ? '2. Verify CHSH Score & Transmit' : 'Quantum Uplink Complete'}
+          </button>
+
+          <button 
+             onClick={() => setHacked(true)}
+             disabled={hacked}
+             style={{
+               width: '100%', padding: '1rem', background: hacked ? 'var(--bg-card)' : 'var(--accent-rose)', 
+               color: hacked ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', 
+               cursor: hacked ? 'not-allowed' : 'pointer', transition: 'all 0.3s'
+             }}
+          >
+             ⚠️ Simulate Hacker Interception
+          </button>
+
+          <button 
+             onClick={resetTarget}
+             style={{
+               width: '100%', padding: '0.8rem', background: 'transparent', 
+               color: 'var(--text-primary)', border: '1px solid var(--border-glass)', borderRadius: '4px', cursor: 'pointer'
+             }}
+          >
+             Reset Simulation
+          </button>
+        </div>
+
+        {/* VISUALIZATION */}
+        <div className="glass-panel" style={{ padding: '2rem', position: 'relative' }}>
+          <div className="flex-between" style={{ marginBottom: '4rem', marginTop: '2rem' }}>
+            <div style={{ textAlign: 'center', zIndex: 10 }}>
+              <Database size={48} color="var(--text-primary)" />
+              <div style={{ marginTop: '0.5rem', fontWeight: 'bold' }}>Hospital Client</div>
+            </div>
+            
+            <div style={{ flex: 1, padding: '0 2rem', position: 'relative', zIndex: 1 }}>
+              {hacked ? (
+                 <div style={{ height: '4px', background: 'var(--accent-rose)', width: '100%' }} />
+              ) : qStep === 0 ? (
+                 <div style={{ height: '2px', background: 'var(--border-glass)', width: '100%', borderStyle: 'dashed' }} />
+              ) : (
+                 <div className="fiber-optic-cable"><div className={qStep === 2 ? "fiber-optic-pulse" : "fiber-optic-pulse-slow"} /></div>
+              )}
+              
+              <div style={{ 
+                position: 'absolute', top: '-35px', left: '50%', transform: 'translateX(-50%)',
+                color: hacked ? 'var(--accent-rose)' : qStep === 0 ? 'var(--text-muted)' : 'var(--accent-cyan)', 
+                fontWeight: 'bold', background: 'rgba(0,0,0,0.8)', padding: '0.5rem 1rem', borderRadius: '20px',
+                border: hacked ? '1px solid var(--accent-rose)' : qStep > 0 ? '1px solid var(--accent-cyan)' : '1px solid var(--border-glass)'
+              }}>
+                {hacked ? 'X COLLAPSED (1.41)' : qStep === 0 ? 'Idle' : qStep === 1 ? 'CHSH: 2.82 (Safe)' : 'AES-128 Transmitting 🔒'}
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center', zIndex: 10 }}>
+              <Server size={48} color="var(--text-primary)" />
+              <div style={{ marginTop: '0.5rem', fontWeight: 'bold' }}>Central Server</div>
             </div>
           </div>
 
-          <div style={{ textAlign: 'center' }}>
-            <Server size={48} color="var(--text-primary)" />
-            <div style={{ marginTop: '0.5rem' }}>Hybrid Server</div>
+          {qStep === 2 && !hacked && (
+            <div style={{ padding: '1rem', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--accent-emerald)', borderRadius: '4px', marginBottom: '1rem', textAlign: 'center' }}>
+              <div style={{ color: 'var(--accent-emerald)', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>FERNET SECURE PAYLOAD (AES-128-CBC + HMAC-SHA256)</div>
+              <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: 'var(--text-muted)', overflowWrap: 'break-word', letterSpacing: '1px' }}>
+                gAAAAABkV...8ZxL9QjP_7YkO9uK_x_T2l_mQ=
+              </div>
+            </div>
+          )}
+
+          <div className="glass-panel font-mono" style={{ padding: '1rem', background: '#000', color: hacked ? 'var(--accent-rose)' : 'var(--accent-emerald)', minHeight: '150px', fontSize: '0.85rem' }}>
+            {logs.map((log, i) => (
+              <div key={i} style={{ marginBottom: '0.5rem' }}>{log}</div>
+            ))}
           </div>
         </div>
-
-        <div style={{ textAlign: 'center' }}>
-          <button 
-             onClick={() => setHacked(!hacked)}
-             style={{
-               padding: '0.8rem 1.5rem', background: hacked ? 'var(--accent-emerald)' : 'var(--accent-rose)', 
-               color: '#fff', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer'
-             }}
-          >
-             {hacked ? 'Restore Hybrid Link' : 'Simulate Eavesdropper Interception'}
-          </button>
-        </div>
-      </div>
-
-      <div className="glass-panel font-mono" style={{ padding: '1.5rem', background: '#000', color: hacked ? 'var(--accent-rose)' : 'var(--accent-emerald)', minHeight: '200px' }}>
-        <h4 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>Hybrid Quantum Terminal</h4>
-        {logs.map((log, i) => (
-          <div key={i} style={{ marginBottom: '0.5rem' }}>{log}</div>
-        ))}
       </div>
     </div>
   );
