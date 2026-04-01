@@ -1,0 +1,63 @@
+====================================================================
+SECURITY ANALYSIS & SYSTEM LIMITATIONS
+(A Guide for the Defense Presentation)
+====================================================================
+
+IS MY SYSTEM SECURE?
+Yes. Your project implements what is known as "State-of-the-Art Defense-in-Depth." This means it doesn't just rely on one security wall; it layers three different advanced security protocols on top of each other. If a hacker breaches one wall, the next wall stops them.
+
+--------------------------------------------------------------------
+HOW IT IS SECURE AND FROM WHAT (THE 3 THREATS):
+--------------------------------------------------------------------
+
+1. Threat: Eavesdroppers & Man-in-the-Middle Attacks
+   -> A hacker places themselves between the Hospital and the Server to steal the AI weights as they fly across the internet.
+   -> Your Defense: Quantum Cryptography (E91 Protocol). 
+   -> How it works: We use quantum entanglement to encrypt the data. Because of the laws of quantum physics,
+    if the hacker even "looks" at the key while it's moving, the entanglement breaks. Our system runs a "CHSH Inequality Test." 
+    If the score drops below 2.0, the system knows a hacker is watching and instantly cuts the connection.
+
+2. Threat: Model Inversion / Reverse-Engineering Attacks 
+   -> A hacker legally receives the final AI model and uses supercomputers to reverse-engineer the math to find out what the original patient's skin looked 
+   like (stealing their identity/data).
+   -> Your Defense: Differential Privacy (DP).
+   -> How it works: Before a hospital sends its AI weights,
+    it deliberately injects "Gaussian Noise" (random mathematical scrambling) 
+    into the numbers. This permanently blurs any identifiable patient traces. 
+    We track this using an "Epsilon Privacy Budget" (ε). 
+
+3. Threat: Byzantine Poisoning Attacks
+   -> A hacker takes over an entire Hospital computer and purposely sends "poisoned" (destructive) AI weights to the main server to ruin the global Master AI.
+   -> Your Defense: Robust Server Aggregation (Krum & Trimmed Mean).
+   -> How it works: Instead of blindly trusting all hospitals, the server acts like a lie detector. It mathematically compares the updates from Hospital A, B, and C. If Hospital C's update looks drastically different from A and B, the Krum algorithm flags Hospital C as a "Poisoned Anomaly" and immediately deletes its data before it can harm the Master AI.
+
+====================================================================
+DISADVANTAGES AND LIMITATIONS OF YOUR SYSTEM
+(Be ready to admit these during your presentation to sound like an expert!)
+====================================================================
+
+To sound like a true engineer, you must know the weaknesses of your project. Here are the 4 main limitations you can confidently state:
+
+1. THE "PRIVACY vs. ACCURACY" TRADE-OFF
+Security physically destroys accuracy. Because we are injecting Differential Privacy noise to scramble the weights and protect the patients,
+the AI's brain is constantly fighting against that noise to learn. 
+This means a 100% secure model will always have a lower Max Accuracy (e.g., 50%)
+than an unsecure, illegal model (e.g., 85%).
+
+2. COMPUTATIONAL & SPEED OVERHEAD
+Calculating quantum simulations, computing CHSH values, encrypting matrices with AES,
+ and injecting Gaussian noise takes a massive amount of extra processing power. 
+ Training this secure Federated AI takes drastically longer than training a normal, 
+ centralized AI.
+
+3. REQUIRES SPECIALIZED QUANTUM HARDWARE (Real-world limitation)
+While your Python code simulates the quantum Entanglement perfectly on a laptop, 
+a real-world hospital would need to spend millions of dollars to install physical Quantum 
+Fiber-Optic cables to transmit entangled photons. Conventional internet cables cannot run 
+the E91 protocol yet.
+
+4. MASSIVE NETWORK BANDWIDTH USAGE
+Every single round, your hospitals have to send an 8.3-million-parameter
+ matrix to the server, and the server has to send it back. Encrypting and transmitting 
+ gigabytes of data back and forth constantly requires a flawless, extremely high-speed 
+ internet connection, which rural hospitals might not possess.

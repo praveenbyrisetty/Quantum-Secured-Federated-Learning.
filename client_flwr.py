@@ -262,13 +262,15 @@ class FLQCClient(fl.client.NumPyClient):
         # =============================================
         self.model.train()
         # Class weights to handle severe HAM10000 class imbalance (majority 'nv')
-        # Inverse class frequency for: ['akiec', 'bcc', 'bkl', 'df', 'mel', 'nv', 'vasc']
+        # Smoothed weights to prevent NaN divergence during training early rounds
         class_weights = torch.tensor(
-            [4.37, 2.78, 1.30, 12.44, 1.28, 0.21, 10.07], 
+            [3.0, 2.0, 1.2, 5.0, 1.2, 0.5, 4.0], 
             dtype=torch.float32
         ).to(self.device)
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
-        optimizer = optim.SGD(self.model.parameters(), lr=0.005, momentum=0.9)
+        
+        # Switched to AdamW for better stability against exploding gradients/NaNs
+        optimizer = optim.AdamW(self.model.parameters(), lr=0.001, weight_decay=1e-4)
         
         # Cosine annealing LR scheduler for smoother convergence
         local_epochs = SECURITY_CONFIG["local_epochs"]
@@ -295,6 +297,12 @@ class FLQCClient(fl.client.NumPyClient):
                         self.model.parameters(), 
                         max_norm=SECURITY_CONFIG["max_grad_norm"]
                     )
+                    
+                    # SECURITY FIX: Guard against exploding gradients (NaNs)
+                    if math.isnan(loss.item()) or math.isnan(grad_norm):
+                        optimizer.zero_grad() # Throw away corrupted gradient
+                        continue # Skip this batch
+                    
                     if grad_norm > SECURITY_CONFIG["max_grad_norm"]:
                         clip_count += 1
                     
