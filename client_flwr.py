@@ -28,7 +28,7 @@ import torch.nn.utils as nn_utils
 import numpy as np
 import flwr as fl
 from collections import OrderedDict
-from hybrid_model import HybridModel
+from quantum_e91_model import QuantumE91Model
 from quantum_e91 import generate_shared_key, encrypt_parameters, verify_entanglement
 from data_setup import get_client_dataset
 
@@ -83,7 +83,7 @@ class FLQCClient(fl.client.NumPyClient):
     def __init__(self, cid: str, device: torch.device, total_clients: int = 3):
         self.cid = cid
         self.device = device
-        self.model = HybridModel().to(self.device)
+        self.model = QuantumE91Model().to(self.device)
         self.train_loader = self._load_data(int(cid), total_clients)
         
         # Security state tracking (for UI display)
@@ -389,3 +389,6 @@ class FLQCClient(fl.client.NumPyClient):
         # SECURITY: The quantum key is stored server-side via shared key exchange,
         # NOT transmitted in the metrics alongside the encrypted data.
         return secure_params, metrics["num_samples"], metrics
+
+
+       

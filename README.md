@@ -20,7 +20,7 @@ FLQC is a **quantum-secured federated learning framework** with a multi-layered 
 
 - **3-Layer Security Architecture**:
   - **Layer 1 — Communication**: E91 quantum key distribution + Fernet AES-128 encryption of model parameters + CHSH entanglement verification
-  - **Layer 2 — Aggregation**: Krum + Trimmed Mean hybrid (default), with anomaly detection, cosine similarity checks, and norm clipping
+  - **Layer 2 — Aggregation**: Krum + Trimmed Mean quantum e91 (default), with anomaly detection, cosine similarity checks, and norm clipping
   - **Layer 3 — Endpoint**: Gradient clipping + Differential Privacy noise injection (formal Gaussian mechanism with ε, δ guarantees)
 
 - **4 Aggregation Strategies** (selectable in sidebar):
@@ -64,7 +64,7 @@ FLQC is a **quantum-secured federated learning framework** with a multi-layered 
 ┌──────────────────────────────────────────────────────────────────┐
 │              Federated Server (server.py)                        │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │  Secure Aggregation: Krum + Trimmed Mean (Hybrid)          │  │
+│  │  Secure Aggregation: Krum + Trimmed Mean (Quantum E91)          │  │
 │  │  + Norm Clipping + Anomaly Detection (norm + cosine sim)   │  │
 │  └────────────────────────────────────────────────────────────┘  │
 └──────────┬──────────────────┬──────────────────┬────────────────┘
@@ -195,7 +195,7 @@ Then:
 ├── server.py              # Streamlit UI + FL orchestration + aggregation strategies
 ├── client_flwr.py         # FL client: gradient clipping, DP noise, E91 encryption
 ├── quantum_e91.py         # E91 quantum key generation, CHSH verification, encryption
-├── hybrid_model.py        # CNN model (3 conv blocks → 3 FC layers, 7-class output)
+├── quantum_e91_model.py        # CNN model (3 conv blocks → 3 FC layers, 7-class output)
 ├── data_setup.py          # HAM10000 dataset loader + non-IID hospital partitioning
 ├── download_dataset.py    # Kaggle auto-downloader for HAM10000
 ├── GPU_SETUP.md           # CUDA/GPU setup instructions

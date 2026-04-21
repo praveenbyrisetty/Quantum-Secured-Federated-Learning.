@@ -32,7 +32,7 @@ import time
 from typing import List, Tuple
 from collections import OrderedDict
 from flwr.common import Parameters, FitRes, Scalar, parameters_to_ndarrays, ndarrays_to_parameters
-from hybrid_model import HybridModel, NUM_CLASSES
+from multi_modal_model import MultiModalFederatedModel, NUM_CLASSES
 from client_flwr import FLQCClient
 from data_setup import get_client_dataset, get_full_test_dataset, CLASS_NAMES, CLASS_DISPLAY, CLIENT_CLASSES, IMAGE_SIZE
 from quantum_e91 import decrypt_parameters
@@ -87,9 +87,9 @@ HAM10000_CLASSES = [CLASS_DISPLAY[c] for c in CLASS_NAMES]
 
 # Client descriptions for UI
 CLIENT_LABELS = {
-    0: "🏥 Hospital A — All 7 Classes",
-    1: "🏥 Hospital B — All 7 Classes",
-    2: "🏥 Hospital C — All 7 Classes",
+    0: "🏥 Hospital A — Melanocytic (nv, mel)",
+    1: "🏥 Hospital B — Keratosis (bkl, bcc, akiec)",
+    2: "🏥 Hospital C — Vascular (vasc, df)",
 }
 
 
@@ -284,7 +284,7 @@ def krum_aggregate(results: List[Tuple], f: int = 1) -> list:
 
 def krum_trimmed_mean_aggregate(results: List[Tuple], f: int = 1, beta: float = 0.1) -> list:
     """
-    HYBRID: Krum + Trimmed Mean (STRONGEST defense).
+    QUANTUM E91: Krum + Trimmed Mean (STRONGEST defense).
     
     HOW IT WORKS (2-stage defense):
     
@@ -614,7 +614,7 @@ def main():
             st.divider()
             
             # Initialize global model
-            global_model = HybridModel().to(device)
+            global_model = MultiModalFederatedModel().to(device)
             global_params = [val.cpu().numpy() for _, val in global_model.state_dict().items()]
             
             # Create clients once
@@ -802,18 +802,18 @@ def main():
         st.info("👈 Configure training settings and click START")
         
         st.subheader("📊 HAM10000 Dataset")
-        st.caption("10,015 dermoscopic images · 7 skin lesion classes · IID split across 3 hospitals")
+        st.caption("10,015 dermoscopic images · 7 skin lesion classes · Non-IID split across 3 hospitals")
         
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("**🏥 Hospital A**")
-            st.caption("All 7 Classes (Uniform)")
+            st.caption("Melanocytic Nevi, Melanoma")
         with col2:
             st.markdown("**🏥 Hospital B**")
-            st.caption("All 7 Classes (Uniform)")
+            st.caption("Benign Keratosis, Basal Cell Carcinoma, Actinic Keratoses")
         with col3:
             st.markdown("**🏥 Hospital C**")
-            st.caption("All 7 Classes (Uniform)")
+            st.caption("Vascular Lesions, Dermatofibroma")
         
         st.divider()
         st.subheader("🔬 Skin Lesion Classes")
@@ -889,7 +889,7 @@ def main():
         st.subheader("🎓 Global Model Evaluation")
         
         try:
-            eval_model = HybridModel().to(device)
+            eval_model = MultiModalFederatedModel().to(device)
             params_dict = zip(eval_model.state_dict().keys(), st.session_state.trained_model_params)
             state_dict = OrderedDict({k: torch.from_numpy(np.array(v)) for k, v in params_dict})
             eval_model.load_state_dict(state_dict, strict=True)
@@ -960,7 +960,7 @@ def main():
         st.subheader("🔬 Test Prediction — Skin Lesion")
         
         try:
-            prediction_model = HybridModel().to(device)
+            prediction_model = MultiModalFederatedModel().to(device)
             params_dict = zip(prediction_model.state_dict().keys(), st.session_state.trained_model_params)
             state_dict = OrderedDict({k: torch.from_numpy(np.array(v)) for k, v in params_dict})
             prediction_model.load_state_dict(state_dict, strict=True)

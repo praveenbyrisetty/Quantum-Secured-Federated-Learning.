@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 NUM_CLASSES = 7  # HAM10000 has 7 skin lesion classes
 
-class HybridModel(nn.Module):
+class QuantumE91Model(nn.Module):
     """
     CNN Model for HAM10000 Skin Lesion Classification (7 classes).
     

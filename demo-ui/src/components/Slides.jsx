@@ -25,9 +25,9 @@ export const DataDistributionSlide = () => {
 
   return (
     <div className="animate-slide-up" style={{ padding: '0 2rem' }}>
-      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 0: Core Hybrid Architecture</h2>
+      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 0: Core Quantum E91 Architecture</h2>
       <p style={{ fontSize: '1.2rem', marginBottom: '2rem', maxWidth: '900px' }}>
-        In a true Hybrid Federated Learning environment, patient data <strong>never</strong> leaves the hospital. Instead of pooling datasets, each of the 3 hospital supercomputers trains its own mini-AI locally on its proprietary dataset, and only transmits mathematically encrypted "upgrades" up to the Central Server.
+        In a true Quantum E91 Federated Learning environment, patient data <strong>never</strong> leaves the hospital. Instead of pooling datasets, each of the 3 hospital supercomputers trains its own mini-AI locally on its proprietary dataset, and only transmits mathematically encrypted "upgrades" up to the Central Server.
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
@@ -142,7 +142,7 @@ export const LocalTrainingSlide = () => {
 
   return (
     <div className="animate-slide-up" style={{ padding: '0 2rem' }}>
-      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 1: Hybrid Differential Privacy</h2>
+      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 1: Quantum E91 Differential Privacy</h2>
       <p style={{ fontSize: '1.1rem', marginBottom: '1.5rem', maxWidth: '900px' }}>
         In our system, the <strong>Three Hospital Clients</strong> act as our primary defensive endpoints. The local security workflow operates in three strict procedural steps before communicating with the server:
       </p>
@@ -176,7 +176,7 @@ export const LocalTrainingSlide = () => {
           <div style={{ marginBottom: '2rem' }}>
             <div className="flex-between" style={{ marginBottom: '1rem' }}>
               <span>Privacy Budget (ε): <strong>{epsilon.toFixed(1)}</strong></span>
-              {epsilon < 3 ? <span style={{color: 'var(--accent-emerald)'}}>Maximum Security</span> : epsilon > 8 ? <span style={{color: 'var(--accent-rose)'}}>Low Security</span> : <span style={{color: 'var(--accent-cyan)'}}>Hybrid Balance</span>}
+              {epsilon < 3 ? <span style={{color: 'var(--accent-emerald)'}}>Maximum Security</span> : epsilon > 8 ? <span style={{color: 'var(--accent-rose)'}}>Low Security</span> : <span style={{color: 'var(--accent-cyan)'}}>Quantum E91 Balance</span>}
             </div>
             <input 
               type="range" 
@@ -326,11 +326,11 @@ export const QuantumTransportSlide = () => {
     ] : qStep === 0 ? [
       "[SYSTEM] Awaiting Quantum Initialization..."
     ] : qStep === 1 ? [
-      "[SYSTEM] Hybrid Quantum Protocol Initiated...", 
+      "[SYSTEM] Quantum E91 Protocol Initiated...", 
       "[SYSTEM] Executing E91 Entanglement...", 
       "[CHSH TEST] Score = 2.82 >> THRESHOLD >> PURE"
     ] : [
-      "[SYSTEM] Hybrid Quantum Protocol Initiated...", 
+      "[SYSTEM] Quantum E91 Protocol Initiated...", 
       "[SYSTEM] Executing E91 Entanglement...", 
       "✓ [CHSH TEST] Score = 2.82 >> THRESHOLD >> PURE",
       "🔒 [CRYPTO] Wrapping Gradients in Fernet (AES-128-CBC)...",
@@ -705,9 +705,9 @@ export const SecureAggregationSlide = () => {
 
   return (
     <div className="animate-slide-up" style={{ padding: '0 2rem' }}>
-      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 3: Hybrid Krum + Trimmed Mean Aggregation</h2>
+      <h2 className="title-gradient" style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>Layer 3: Quantum E91 Krum + Trimmed Mean Aggregation</h2>
       <p style={{ fontSize: '1.2rem', marginBottom: '2rem', maxWidth: '850px' }}>
-        When encrypted vectors arrive, the central server runs a specialized <strong>2-Stage Hybrid Protocol</strong>. It first uses <strong>Multi-Krum</strong> to mathematically filter out maliciously poisoned networks, then applies <strong>Trimmed Mean</strong> to robustly aggregate the surviving models.
+        When encrypted vectors arrive, the central server runs a specialized <strong>2-Stage Quantum E91 Protocol</strong>. It first uses <strong>Multi-Krum</strong> to mathematically filter out maliciously poisoned networks, then applies <strong>Trimmed Mean</strong> to robustly aggregate the surviving models.
       </p>
 
       {/* Hospital Nodes Status */}
@@ -746,7 +746,7 @@ export const SecureAggregationSlide = () => {
       {/* Control Panel */}
       <div className="glass-panel" style={{ padding: '2rem', marginBottom: '2rem' }}>
          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-           <h3 style={{ margin: 0 }}>Hybrid Aggregation Sequence</h3>
+           <h3 style={{ margin: 0 }}>Quantum E91 Aggregation Sequence</h3>
            <button 
              onClick={handleNext}
              style={{
@@ -841,10 +841,10 @@ export const FinalEvaluationSlide = () => {
         marginBottom: '2rem', fontSize: '1.1rem', lineHeight: '1.6'
       }}>
         <p style={{marginBottom: '1rem'}}>
-          <strong>What are we looking at?</strong> These final charts mathematically summarize why our Hybrid system is so valuable.
+          <strong>What are we looking at?</strong> These final charts mathematically summarize why our Quantum E91 system is so valuable.
         </p>
         <p style={{marginBottom: '1rem'}}>
-          <strong>Left Graph (Convergence):</strong> This shows how quickly the AI smartens up over 10 rounds of training. Notice the red line (an unsecured, standard AI). See how the blue line (our Hybrid Secure AI) tracks closely behind it? It proves our security layers don't break the AI's ability to learn complex cancer patterns!
+          <strong>Left Graph (Convergence):</strong> This shows how quickly the AI smartens up over 10 rounds of training. Notice the red line (an unsecured, standard AI). See how the blue line (our Quantum E91 Secure AI) tracks closely behind it? It proves our security layers don't break the AI's ability to learn complex cancer patterns!
         </p>
         <p>
           <strong>Right Graph (The Cost of Privacy):</strong> We must sacrifice a tiny fraction of total accuracy to guarantee that hackers can never identify our patients. This chart visually proves the literal "Cost of Privacy"—trading about 10% accuracy for 100% mathematical security against model-inversion attacks.
@@ -853,7 +853,7 @@ export const FinalEvaluationSlide = () => {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem', marginBottom: '3rem' }}>
         <div className="glass-panel" style={{ padding: '2rem', height: '350px' }}>
-          <h3 style={{ marginBottom: '2rem' }}>Hybrid Convergence Rate</h3>
+          <h3 style={{ marginBottom: '2rem' }}>Quantum E91 Convergence Rate</h3>
           <ResponsiveContainer width="100%" height="80%">
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -861,7 +861,7 @@ export const FinalEvaluationSlide = () => {
               <YAxis stroke="var(--text-muted)" domain={[0, 100]} />
               <RechartsTooltip contentStyle={{ background: 'var(--bg-deep)', border: '1px solid var(--border-glass)' }} />
               <Line type="monotone" dataKey="acc" name="Standard (Unsecured)" stroke="var(--accent-rose)" strokeWidth={3} />
-              <Line type="monotone" dataKey="secAcc" name="Hybrid Model (Secured)" stroke="var(--accent-cyan)" strokeWidth={3} />
+              <Line type="monotone" dataKey="secAcc" name="Quantum E91 Model (Secured)" stroke="var(--accent-cyan)" strokeWidth={3} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -875,7 +875,7 @@ export const FinalEvaluationSlide = () => {
               <YAxis stroke="var(--text-muted)" domain={[0, 100]} />
               <RechartsTooltip contentStyle={{ background: 'var(--bg-deep)', border: '1px solid var(--border-glass)' }} />
               <Bar dataKey="val1" name="Standard Model" fill="var(--accent-rose)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="val2" name="Hybrid Privacy Model" fill="var(--accent-cyan)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="val2" name="Quantum E91 Privacy Model" fill="var(--accent-cyan)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

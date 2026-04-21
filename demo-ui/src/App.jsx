@@ -14,7 +14,7 @@ const App = () => {
   const [activeStep, setActiveStep] = useState(0);
 
   const steps = [
-    { title: 'Layer 0: Core Hybrid Architecture', component: <DataDistributionSlide /> },
+    { title: 'Layer 0: Core Quantum E91 Architecture', component: <DataDistributionSlide /> },
     { title: 'Layer 1: Local Differential Privacy', component: <LocalTrainingSlide /> },
     { title: 'Layer 2: Quantum E91 Encryption', component: <QuantumTransportSimulator /> },
     { title: 'Layer 3: Krum Defensive Aggregation', component: <SecureAggregationSlide /> },
@@ -41,7 +41,7 @@ const App = () => {
       }}>
         <h1 className="title-gradient" style={{ fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
           <LayoutDashboard size={24} color="var(--accent-cyan)" />
-          Hybrid FLQC Defense
+          Quantum E91 FLQC Defense
         </h1>
         
         {/* Progress Dots */}
