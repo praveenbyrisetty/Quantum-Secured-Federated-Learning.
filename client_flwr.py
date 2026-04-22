@@ -29,7 +29,7 @@ import numpy as np
 import flwr as fl
 from collections import OrderedDict
 from quantum_e91_model import QuantumE91Model
-from quantum_e91 import generate_shared_key, encrypt_parameters, verify_entanglement
+from hybrid_e91 import generate_shared_key, encrypt_parameters, verify_entanglement
 from data_setup import get_client_dataset
 
 logger = logging.getLogger("FLQC.Client")
@@ -47,7 +47,7 @@ SECURITY_CONFIG = {
                                  # If gradient norm > 1.0, scale it down to 1.0
                                  # This also defines the "sensitivity" (Δf) for DP.
     
-    "dp_epsilon": 5.0,           # Target per-round privacy budget (ε) (Decreased for MORE privacy)
+    "dp_epsilon": 15.0,          # Target per-round privacy budget (ε)
                                   # Controls the privacy-accuracy trade-off
                                   # LOWER ε = MORE private (more noise) but LESS accurate
                                   # HIGHER ε = LESS private (less noise) but MORE accurate
@@ -61,7 +61,7 @@ SECURITY_CONFIG = {
     "dp_enabled": True,          # Whether to apply Differential Privacy
     "encryption_enabled": True,  # Whether to encrypt parameters before sending
     
-    "local_epochs": 4,           # Number of local training epochs per round (Increased for better learning against noise)
+    "local_epochs": 6,           # Number of local training epochs per round
                                   # More epochs = better local training but more divergence
 }
 
@@ -153,21 +153,6 @@ class FLQCClient(fl.client.NumPyClient):
     def _apply_dp_noise(self, parameters):
         """
         DIFFERENTIAL PRIVACY: Add calibrated Gaussian noise to model parameters.
-        
-        KEY DIFFERENCE FROM BEFORE:
-        - Previously: noise_multiplier was an arbitrary constant (0.01)
-        - Now: σ is CALCULATED from ε, δ, and sensitivity using the Gaussian mechanism formula
-        - This provides a FORMAL privacy guarantee: (ε, δ)-Differential Privacy
-        
-        PRIVACY BUDGET TRACKING:
-        Each round "spends" ε privacy budget. We track the cumulative cost
-        using basic composition theorem: ε_total = Σ ε_per_round
-        (Advanced composition would give tighter bounds but is harder to explain)
-        
-        WHY THIS MATTERS:
-        Even though we don't share raw data, model weights can leak information.
-        By adding calibrated noise, we get a MATHEMATICAL GUARANTEE that no single
-        data point has a noticeable effect on the output.
         """
         if not SECURITY_CONFIG["dp_enabled"]:
             self.last_dp_noise_level = 0.0
@@ -177,13 +162,26 @@ class FLQCClient(fl.client.NumPyClient):
         noisy_params = []
         total_noise = 0.0
         
-        for param in parameters:
+        # We need the keys to know which parameter is which
+        keys = list(self.model.state_dict().keys())
+        
+        for i, param in enumerate(parameters):
+            key = keys[i]
+            # SECURITY FIX (Vuln 10): Never add noise to batch normalization 
+            # running statistics. DP noise can make variance negative, which
+            # causes a divide-by-zero (NaN) explosion during model.eval() test!
+            if "running" in key or "tracked" in key:
+                noisy_params.append(param)
+                continue
+                
             # Generate Gaussian noise calibrated to (ε, δ)-DP
             noise = np.random.normal(0, sigma, size=param.shape).astype(param.dtype)
             noisy_params.append(param + noise)
             total_noise += np.linalg.norm(noise)
         
-        self.last_dp_noise_level = total_noise / len(parameters) if parameters else 0.0
+        # Calculate average noise across ONLY the modified layers
+        trainable_layers = [k for k in keys if "running" not in k and "tracked" not in k]
+        self.last_dp_noise_level = total_noise / len(trainable_layers) if trainable_layers else 0.0
         
         # Track privacy budget spent this round
         epsilon_this_round = SECURITY_CONFIG["dp_epsilon"]
@@ -270,7 +268,7 @@ class FLQCClient(fl.client.NumPyClient):
         criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
         
         # Switched to AdamW for better stability against exploding gradients/NaNs
-        optimizer = optim.AdamW(self.model.parameters(), lr=0.001, weight_decay=1e-4)
+        optimizer = optim.AdamW(self.model.parameters(), lr=0.0005, weight_decay=1e-4)
         
         # Cosine annealing LR scheduler for smoother convergence
         local_epochs = SECURITY_CONFIG["local_epochs"]

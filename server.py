@@ -32,10 +32,10 @@ import time
 from typing import List, Tuple
 from collections import OrderedDict
 from flwr.common import Parameters, FitRes, Scalar, parameters_to_ndarrays, ndarrays_to_parameters
-from multi_modal_model import MultiModalFederatedModel, NUM_CLASSES
+from quantum_e91_model import QuantumE91Model as MultiModalFederatedModel, NUM_CLASSES
 from client_flwr import FLQCClient
 from data_setup import get_client_dataset, get_full_test_dataset, CLASS_NAMES, CLASS_DISPLAY, CLIENT_CLASSES, IMAGE_SIZE
-from quantum_e91 import decrypt_parameters
+from hybrid_e91 import decrypt_parameters
 
 
 def verify_client_encryption(metrics: dict) -> dict:
@@ -80,6 +80,9 @@ def verify_client_encryption(metrics: dict) -> dict:
 
 # --- MAIN CONFIG ---
 st.set_page_config(page_title="FLQC - Skin Lesion FL", layout="wide", page_icon="🏥")
+
+
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # HAM10000 class display names
@@ -103,7 +106,7 @@ CLIENT_LABELS = {
 # Change this to switch aggregation strategy
 AGGREGATION_METHOD = "krum_trimmed_mean"  # Options: "fedavg", "trimmed_mean", "krum", "krum_trimmed_mean"
 TRIMMED_MEAN_BETA = 0.1                    # Fraction to trim from each end (10%)
-NORM_THRESHOLD = 1500.0             # Max allowed update norm (anomaly detection)
+NORM_THRESHOLD = "DYNAMIC"          # Switches to dynamically tracking (Mean * 1.5)
 
 
 def fedavg_aggregate(results: List[Tuple]) -> list:
@@ -527,8 +530,19 @@ def aggregate_fit_results(results: List[Tuple], method: str = None) -> Tuple[lis
             "all_blocked": True,
         }
     
-    # Step 1: Anomaly Detection (on active clients only)
-    anomalies = detect_anomalies(active_results, threshold=NORM_THRESHOLD)
+    # Step 1: Dynamic Threshold Calibration
+    if NORM_THRESHOLD == "DYNAMIC":
+        all_norms_dynamic = []
+        for client, _, _ in active_results:
+            flat_params = np.concatenate([p.flatten() for p in client.get_parameters({})])
+            all_norms_dynamic.append(np.linalg.norm(flat_params))
+        # The limit dynamically rises as the network trains: Threshold is exactly 1.5x the Round's Average
+        round_threshold = np.mean(all_norms_dynamic) * 1.5
+    else:
+        round_threshold = float(NORM_THRESHOLD)
+
+    # Step 1a: Anomaly Detection (on active clients only)
+    anomalies = detect_anomalies(active_results, threshold=round_threshold)
     num_anomalous = sum(1 for a in anomalies if a["is_anomalous"])
     
     # Step 1b: Norm Clipping — limit each client's update magnitude before aggregation.
@@ -536,7 +550,7 @@ def aggregate_fit_results(results: List[Tuple], method: str = None) -> Tuple[lis
     clipped_results = []
     for client, num_samples, metrics in active_results:
         params = client.get_parameters({})
-        clipped_params, orig_norm, was_clipped = clip_update_norm(params, max_norm=NORM_THRESHOLD)
+        clipped_params, orig_norm, was_clipped = clip_update_norm(params, max_norm=round_threshold)
         if was_clipped:
             client.set_parameters(clipped_params)  # Apply clipped weights back onto client
         clipped_results.append((client, num_samples, metrics))
